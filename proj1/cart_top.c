@@ -15,6 +15,7 @@
  ***/
 #include <mpi.h>
 #include <stdio.h>
+#include <math.h>
 #define SIZE   16
 #define UP     0
 #define DOWN   1
@@ -23,7 +24,7 @@
  
 int main (int argc, char* argv[])
 {
-  int rank, size, numtasks, source, dest, outbuf, i, tag=1;
+  int rank, size, numtasks, source, dest, outbuf, i, tag=1, valid=0;
   int inbuf[4]={MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL},
       nbrs[4], dims[2]={4,4},
       periods[2]={0,0}, reorder=0, coords[2];
@@ -32,10 +33,19 @@ int main (int argc, char* argv[])
   MPI_Status stats[8];
   MPI_Comm cartcomm;
 
+  printf("Rank, Xpos, Ypos,  Type, UP, DOWN, LEFT, RIGHT\n");
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
- 
-  if(numtasks == SIZE) {
+  
+  size = sqrt(numtasks);
+  if(pow(size, 2) == numtasks)
+    valid = 1;
+  //printf("SQRT = %d, VALID = %s\n", size, (valid ? "YES" : "NO"));
+
+  if(valid) {
+    dims[0] = size;
+    dims[1] = size;
+
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartcomm);
     MPI_Comm_rank(cartcomm, &rank);
     MPI_Cart_coords(cartcomm, rank, 2, coords);
@@ -55,12 +65,12 @@ int main (int argc, char* argv[])
 
     MPI_Waitall(8, reqs, stats);
 
-    printf("rank= %d coords = %d %d neighbors(u,d,l,r)= %d %d %d %d\n",
-            rank, coords[0], coords[1], nbrs[UP], nbrs[DOWN], nbrs[LEFT], nbrs[RIGHT]);
-    printf("rank= %d                inbuf(u,d,l,r)= %d %d %d %d\n",
-            rank, inbuf[UP], inbuf[DOWN], inbuf[LEFT], inbuf[RIGHT]);
+    printf("%4d, %4d, %4d, %5s, %2d, %4d, %4d, %5d\n",
+            rank, coords[0], coords[1], "NBRS", nbrs[UP], nbrs[DOWN], nbrs[LEFT], nbrs[RIGHT]);
+    printf("                  %4s, %2d, %4d, %4d, %5d\n",
+            "INBUF", inbuf[UP], inbuf[DOWN], inbuf[LEFT], inbuf[RIGHT]);
   } else {
-    printf("Must specify %d processors. Terminating.\n", SIZE);
+    printf("Must specify a power-of-2 number of processors. Terminating.\n");
   }
 
   MPI_Finalize();

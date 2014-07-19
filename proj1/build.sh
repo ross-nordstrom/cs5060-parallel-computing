@@ -1,1 +1,1 @@
-mpicc cart_top.c -o cart.o
+mpicc cart_top.c -lm -o cart.o
