@@ -33,7 +33,7 @@ int main (int argc, char* argv[])
   MPI_Status stats[8];
   MPI_Comm cartcomm;
 
-  printf("Rank, Xpos, Ypos,  Type, UP, DOWN, LEFT, RIGHT\n");
+  //printf("Rank, Xpos, Ypos,  Type, UP, DOWN, LEFT, RIGHT\n");
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
   
@@ -65,10 +65,12 @@ int main (int argc, char* argv[])
 
     MPI_Waitall(8, reqs, stats);
 
-    printf("%4d, %4d, %4d, %5s, %2d, %4d, %4d, %5d\n",
-            rank, coords[0], coords[1], "NBRS", nbrs[UP], nbrs[DOWN], nbrs[LEFT], nbrs[RIGHT]);
-    printf("                  %4s, %2d, %4d, %4d, %5d\n",
-            "INBUF", inbuf[UP], inbuf[DOWN], inbuf[LEFT], inbuf[RIGHT]);
+    printf("%d/%s (%d,%d)\n",
+            rank, "POS", coords[0], coords[1]);
+    printf("%d/%s (%d,%d,%d,%d)\n",
+            rank, "NBRS", nbrs[UP], nbrs[DOWN], nbrs[LEFT], nbrs[RIGHT]);
+    printf("%d/%s (%d,%d,%d,%d)\n",
+            rank, "INBUF", inbuf[UP], inbuf[DOWN], inbuf[LEFT], inbuf[RIGHT]);
   } else {
     printf("Must specify a power-of-2 number of processors. Terminating.\n");
   }
