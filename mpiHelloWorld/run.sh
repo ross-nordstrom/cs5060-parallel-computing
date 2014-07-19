@@ -1,1 +1,1 @@
-mpirun -np 2 ./hello
+mpirun -np 2 -f mpd.hosts ./hello

@@ -1,1 +1,1 @@
-mpicc mpi_hello.c -o hello
+mpicc mpi_hello.c -o hello.o
