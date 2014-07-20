@@ -19,7 +19,7 @@ class Util:
 
 print "Verify cartesian logic. Expect each process in cartesian topology to send its Rank to its neighbors"
 
-for proc in [4, 9, 16]:
+for proc in [4, 9, 16, 25, 36, 49, 64, 81, 100]:
    n = math.sqrt(proc)
    print "Test with {} processors".format(proc)
    expectedLines = Util.getExpectedLines(proc,n)
