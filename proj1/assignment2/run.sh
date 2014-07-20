@@ -4,5 +4,4 @@
 #  echo "  '<RANK>/INBUF (up,down,left,right)' -- The ranks received from each relative pos"
 #  echo " "
 #  echo " "
-#mpirun -np 16 -f mpd.hosts ./cart.o
-mpirun -np 16 -f mpd.hosts ./mmult.o
+mpirun -np 4 -f mpd.hosts ./mmult.o

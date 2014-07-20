@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#define SIZE   16
 #define UP     0
 #define DOWN   1
 #define LEFT   2
@@ -28,20 +27,23 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr);
 void initMatrix(int ***matrixPtr, int size);
 void printMatrix(int **matrix, int size);
 
+
+int **matrixA;
+int **matrixB;
+int **matrixC;
+
 int main (int argc, char* argv[])
 {
-  int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to;
+  int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to, tmp;
   int inbuf[4]={MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL},
       nbrs[4], dims[2]={4,4},
       periods[2]={1,1}, reorder=1, coords[2];
-  int **matrixA;
-  int **matrixB;
-  int **matrixC;
+  int theirRank;
+  int *myMatrixA, *myMatrixB, *myMatrixC, *myColumn;
+  char *tmpStr;
   FILE *fr;
-
-  MPI_Request reqs[8];
-  MPI_Status stats[8];
-  MPI_Comm cartcomm;
+  MPI_Status status;
+  MPI_Request request;
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -59,45 +61,112 @@ int main (int argc, char* argv[])
     printf("NumTasks is %d\n", numtasks);
   }
 
-  if(pow(size, 2) == numtasks)
-    valid = 1;
+  if(rank==0 && size % numtasks != 0) {
+    printf("ERROR: Expected size mod numtasks == 0\n");
+    MPI_Finalize();
+    return 1;
+  }
 
-  if(valid) {
-   MPI_Bcast(matrixB, size*size, MPI_INT, 0, MPI_COMM_WORLD);
-   MPI_Scatter(matrixA, size*size/numtasks, MPI_INT, matrixA[from], size*size/numtasks, MPI_INT, 0, MPI_COMM_WORLD);
-
-   from = rank * size/numtasks;
-   to = (rank+1) * size/numtasks;
-
-   printf("[%d] from:%d, to:%d\n",rank,from,to);
-
-   printf("computing slice %d (from row %d to %d)\n", rank, from, to-1);
-   for (i=from; i<to; i++) {
-      for (j=0; j<SIZE; j++) {
-        matrixC[i][j]=0;
-        for (k=0; k<SIZE; k++) {
-            matrixC[i][j] += matrixA[i][k]*matrixB[k][j];
-        }
-      }
-   }
-
-    MPI_Gather (matrixC[from], size*size/numtasks, MPI_INT, matrixC, size*size/numtasks, MPI_INT, 0, MPI_COMM_WORLD);
-
-    if (rank==0) {
-      printf("DONE!\n");
-      printf("\n\n");
-      printMatrix(matrixA, size);
-      printf("\n\n\t       * \n");
-      printMatrix(matrixB, size);
-      printf("\n\n\t       = \n");
-      printMatrix(matrixC, size);
-      printf("\n\n");
+  if(rank == 0) {
+    printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
+    for(i=1; i<numtasks; i++) {
+      // Master process must send asynchronously
+      MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
+      MPI_Isend(matrixA[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
+      MPI_Isend(matrixB[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
+      myMatrixA = (int *) malloc(sizeof(int) * size);
+      myMatrixB = (int *) malloc(sizeof(int) * size);
+      myMatrixC = (int *) malloc(sizeof(int) * size);
+      myColumn = (int *) malloc(sizeof(int) * size);
     }
-
   } else {
-    if(rank == 0) {
-      printf("Must specify a power-of-2 number of processors. Terminating.\n");
-    }
+    printf("Proc #%d waiting for size...\n", rank);
+    MPI_Recv(&size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+    myMatrixA = (int *) malloc(sizeof(int) * size);
+    myMatrixB = (int *) malloc(sizeof(int) * size);
+    myMatrixC = (int *) malloc(sizeof(int) * size);
+    myColumn = (int *) malloc(sizeof(int) * size);
+    MPI_Recv(myMatrixA, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(myMatrixB, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    printf("Proc #%d got size: %d%d\n", rank, size);
+
+    // tmpStr = "";
+    // tmp = 0;
+    // for(i=0; i<size; i++) {
+    //   tmp += sprintf(tmpStr+tmp, "%3d ", myMatrixA[i]);
+    // }
+    printf("   [%d] myA: [%3d, %3d, %3d, %3d]\n", rank, myMatrixA[0], myMatrixA[1], myMatrixA[2], myMatrixA[3]);
+
+    // tmpStr = "";
+    // tmp = 0;
+    // for(i=0; i<size; i++) {
+    //   tmp += sprintf(tmpStr+tmp, "%3d ", myMatrixB[i]);
+    // }
+    printf("   [%d] myB: [%3d, %3d, %3d, %3d]\n", rank, myMatrixB[0], myMatrixB[1], myMatrixB[2], myMatrixB[3]);
+  }
+
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  // Assume each process just has a single row
+  from = rank * size/numtasks;
+  to = (rank+1) * size/numtasks;
+
+  printf("Proc #%d past barrier! Size: %d, numtasks:%d, from:%d, through:%d\n", rank, size, numtasks, from, to-1);
+
+  // Each process's job loop -- should just have 1 row per process
+  for (i=from; i<to; i++) {
+    // "i" should just be "rank"
+    if(rank==0) printf("   [%d] i=%d\n",rank,i);
+
+    // Loop over each element in the row (of matrixA)
+    for (j=0; j<size; j++) {
+      if(rank==0) printf("   [%d]    j=%d\n",rank,j);
+
+      myColumn[rank] = myMatrixB[rank];
+      for(k=1; k < size; k++) {
+        if(rank==0) printf("   [%d]       k=%d\n",rank,k);
+
+        // Send/Receive matrixB values (vertical strip)
+        theirRank = (size + rank + k) % size;
+        if(rank==0) printf("   [%d]       theirRank=%d\n",rank,theirRank);
+
+        // Lower rank sends first, then higher rank responds
+        if(theirRank > rank) {
+          printf("(%d)   [%d] S/R with %d. myVal=%d\n", j, rank, theirRank, myMatrixB[j]);
+          MPI_Send(&myMatrixB[j],        1, MPI_INT, theirRank, 1, MPI_COMM_WORLD);
+          MPI_Recv(&myColumn[theirRank], 1, MPI_INT, theirRank, 1, MPI_COMM_WORLD, &status);
+        } else {
+          printf("(%d)   [%d] R/S with %d. myVal=%d\n", j, rank, theirRank, myMatrixB[j]);
+          MPI_Recv(&myColumn[theirRank], 1, MPI_INT, theirRank, 1, MPI_COMM_WORLD, &status);
+          MPI_Send(&myMatrixB[j],        1, MPI_INT, theirRank, 1, MPI_COMM_WORLD);
+        }
+        printf("(%d)   [%d] recvVal: %d\n", j, rank, myColumn[theirRank]);
+      } // for(k)
+      // tmp now has the vertical strip from B
+      printf("(%d)   [%d] myColumn = [%d,%d,%d,%d]\n",j,rank, myColumn[0],myColumn[1],myColumn[2],myColumn[3]);
+
+      myMatrixC[j]=0;
+      for (k=0; k<size; k++) {
+        // tmp = matrixA[i][k]*matrixB[k][j];
+        tmp = myMatrixA[k]*myColumn[k];
+        matrixC[j] += tmp;
+      }
+    } // for(j)
+  } // for(i)
+  printf("computed.\n");
+  printf("   [%d] myMatrixC = [%d,%d,%d,%d]\n",rank, myMatrixC[0],myMatrixC[1],myMatrixC[2],myMatrixC[3]);
+
+  MPI_Gather (matrixC[from], size*size/numtasks, MPI_INT, matrixC, size*size/numtasks, MPI_INT, 0, MPI_COMM_WORLD);
+
+  if (rank==0) {
+    printf("DONE!\n");
+    printf("\n\n");
+    printMatrix(matrixA, size);
+    printf("\n\n\t       * \n");
+    printMatrix(matrixB, size);
+    printf("\n\n\t       = \n");
+    printMatrix(matrixC, size);
+    printf("\n\n");
   }
 
   MPI_Finalize();
