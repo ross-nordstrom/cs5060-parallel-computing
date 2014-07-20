@@ -1,1 +1,1 @@
-mpicc cart_top.c -lm -o cart.o
+mpicc mmult_stripe.c -lm -o mmult.o 
