@@ -22,6 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
+#define DBG    0
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -50,25 +51,27 @@ int main (int argc, char* argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 
   if(rank == 0) {
-    printf("Read input file\n");
+    if(DBG) printf("Read input file\n");
     size = readInputFile(&matrixA, &matrixB);
-    printf("Size is %d\n", size);
-    printf("Matrix A:\n");
-    printMatrix(matrixA, size);
-    printf("\nMatrix B:\n");
-    printMatrix(matrixB, size);
-    printf("\n\n");
-    printf("NumTasks is %d\n", numtasks);
+    if(DBG) {
+      printf("Size is %d\n", size);
+      printf("Matrix A:\n");
+      printMatrix(matrixA, size);
+      printf("\nMatrix B:\n");
+      printMatrix(matrixB, size);
+      printf("\n\n");
+      printf("NumTasks is %d\n", numtasks);
+    }
   }
 
   if(rank==0 && size % numtasks != 0) {
-    printf("ERROR: Expected size mod numtasks == 0\n");
+    if(DBG) printf("ERROR: Expected size mod numtasks == 0\n");
     MPI_Finalize();
     return 1;
   }
 
   if(rank == 0) {
-    printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
+    if(DBG) printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
     for(i=1; i<numtasks; i++) {
       // Master process must send asynchronously
       MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
@@ -86,7 +89,7 @@ int main (int argc, char* argv[])
     myMatrixC = (int *) malloc(sizeof(int) * size);
     MPI_Recv(myMatrixA, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
     MPI_Recv(myMatrixB, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    printf("Proc #%d got size: %d\n", rank, size);
+    if(DBG) printf("Proc #%d got size: %d\n", rank, size);
     // printf("   [%d] myA: [%3d, %3d, %3d, %3d]\n", rank, myMatrixA[0], myMatrixA[1], myMatrixA[2], myMatrixA[3]);
     // printf("   [%d] myB: [%3d, %3d, %3d, %3d]\n", rank, myMatrixB[0], myMatrixB[1], myMatrixB[2], myMatrixB[3]);
   }
@@ -133,40 +136,43 @@ int main (int argc, char* argv[])
       // printf("(%d)   [%d] Past loop barrier\n",j,rank);
     } // for(j)
   } // for(i)
-  printf("[%d] myMatrixC = [%d,%d,%d,%d]\n",rank, myMatrixC[0],myMatrixC[1],myMatrixC[2],myMatrixC[3]);
+  if(DBG) printf("[%d] myMatrixC = [%d,%d,%d,%d]\n",rank, myMatrixC[0],myMatrixC[1],myMatrixC[2],myMatrixC[3]);
 
-  MPI_Gather(&myMatrixC, size, MPI_INT,
-             &matrixC, size*size, MPI_INT,
-             0, MPI_COMM_WORLD);
-
-  // send myMatrixC to root process
-  // printf("[%d] Return myMatrixC to root\n", rank);
-  // MPI_Isend(myMatrixC, size, MPI_INT, 0, 1, MPI_COMM_WORLD, &request);
-
-  // if(rank == 0) {
-  //   initMatrix(&matrixC, size);
-  //   for(k=0;k<size;k++) {
-  //     // receive myMatrixC from process "k"
-  //     printf("Collect myMatrixC from process %d\n", k);
-  //     // myMatrixC = matrixC[k];
-  //     MPI_Recv(&matrixC[k], size, MPI_INT, k, 1, MPI_COMM_WORLD, &status);
-  //     printf("Collected from %d\n", k);
-  //     // printf("matrixC[%d] = [%d,%d,%d,%d]\n",k, matrixC[k][0],matrixC[k][1],matrixC[k][2],matrixC[k][3]);
-  //   }
-  // }
-
-  printf("[%d] Done.\n", rank);
-  // MPI_Barrier(MPI_COMM_WORLD);
+  // MPI_Gather(&myMatrixC, size, MPI_INT,
+  //            &matrixC, size*size, (int *),
+  //            0, MPI_COMM_WORLD);
 
   if(rank == 0) {
-    printf("DONE!\n");
-    printf("\n\n");
-    printMatrix(matrixA, size);
-    printf("\n\n\t       * \n");
-    printMatrix(matrixB, size);
-    printf("\n\n\t       = \n");
+    initMatrix(&matrixC, size);
+    matrixC[0] = myMatrixC;
+    for(k=1;k<size;k++) {
+      // receive myMatrixC from process "k"
+      if(DBG) printf("Collect myMatrixC from process %d\n", k);
+      matrixC[k] = malloc(size*sizeof(int));
+      MPI_Recv(matrixC[k], size, MPI_INT, k, 2, MPI_COMM_WORLD, &status);
+      if(DBG) printf("Collected from %d\n", k);
+      // printf("matrixC[%d] = [%d,%d,%d,%d]\n",k, matrixC[k][0],matrixC[k][1],matrixC[k][2],matrixC[k][3]);
+    }
+  } else {
+    // send myMatrixC to root process
+    if(DBG) printf("[%d] Return myMatrixC to root\n", rank);
+    MPI_Send(myMatrixC, size, MPI_INT, 0, 2, MPI_COMM_WORLD);
+  }
+
+  if(DBG) printf("[%d] Done.\n", rank);
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  if(rank == 0) {
+    // printf("DONE!\n");
+
+    if(DBG) {
+      printf("\n\n");
+      printMatrix(matrixA, size);
+      printf("\n\t       * \n");
+      printMatrix(matrixB, size);
+      printf("\n\t       = \n");
+    }
     printMatrix(matrixC, size);
-    printf("\n\n");
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
