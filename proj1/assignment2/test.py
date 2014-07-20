@@ -72,7 +72,7 @@ out, err = p.communicate()
 
 print " "
 print "Test random inputs..."
-inputSets = [4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 10, 10, 10, 20, 20, 20, 30, 30]
+inputSets = [4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 10, 10, 10, 20, 20, 20, 30, 40]
 for proc in inputSets:
    n = proc
    # print "Test with {} processors".format(proc)
@@ -114,6 +114,6 @@ out, err = p.communicate()
 print "Ran against {} different input sets...".format(1+len(inputSets))
 print "\n\n"
 if errorCnt == 0:
-   print u"Success!\t\t\033[92m{}\033[0m".format(proc, checkMark)
+   print u"Success!\t\t\t\033[92m{}\033[0m".format(proc, checkMark)
 else:
-   print "AH! {} errors...\t\033[91m{}\033[0m".format(errorCnt, 'X')
+   print  "AH! {} errors...\t\t\t\033[91m{}\033[0m".format(errorCnt, 'X')
