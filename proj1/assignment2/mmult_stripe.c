@@ -26,11 +26,11 @@
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr);
 void initMatrix(int ***matrixPtr, int size);
-
+void printMatrix(int **matrix, int size);
 
 int main (int argc, char* argv[])
 {
-  int rank, size, numtasks, source, dest, outbuf, i, tag=1, valid=0;
+  int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to;
   int inbuf[4]={MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL},
       nbrs[4], dims[2]={4,4},
       periods[2]={1,1}, reorder=1, coords[2];
@@ -44,29 +44,62 @@ int main (int argc, char* argv[])
   MPI_Comm cartcomm;
 
   MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
   
   if(rank == 0) {
     printf("Read input file\n");
     size = readInputFile(&matrixA, &matrixB, &matrixC);
     printf("Size is %d\n", size);
+    printf("Matrix A:\n");
+    printMatrix(matrixA, size);
+    printf("\nMatrix B:\n");
+    printMatrix(matrixB, size);
+    printf("\n\n");
+    printf("NumTasks is %d\n", numtasks);
   }
 
   if(pow(size, 2) == numtasks)
     valid = 1;
 
   if(valid) {
-    dims[0] = size;
-    dims[1] = size;
+   MPI_Bcast(matrixB, size*size, MPI_INT, 0, MPI_COMM_WORLD);
+   MPI_Scatter(matrixA, size*size/numtasks, MPI_INT, matrixA[from], size*size/numtasks, MPI_INT, 0, MPI_COMM_WORLD);
 
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartcomm);
-    MPI_Cart_coords(cartcomm, rank, 2, coords);
-    MPI_Cart_shift(cartcomm, 0, 1, &nbrs[UP], &nbrs[DOWN]);
-    MPI_Cart_shift(cartcomm, 1, 1, &nbrs[LEFT], &nbrs[RIGHT]);
+   from = rank * size/numtasks;
+   to = (rank+1) * size/numtasks;
+
+   printf("[%d] from:%d, to:%d\n",rank,from,to);
+
+   printf("computing slice %d (from row %d to %d)\n", rank, from, to-1);
+   for (i=from; i<to; i++) {
+      for (j=0; j<SIZE; j++) {
+        matrixC[i][j]=0;
+        for (k=0; k<SIZE; k++) {
+            matrixC[i][j] += matrixA[i][k]*matrixB[k][j];
+        }
+      }
+   }
+  
+    MPI_Gather (matrixC[from], size*size/numtasks, MPI_INT, matrixC, size*size/numtasks, MPI_INT, 0, MPI_COMM_WORLD);
+  
+    if (rank==0) {
+      printf("DONE!\n");
+      printf("\n\n");
+      printMatrix(matrixA, size);
+      printf("\n\n\t       * \n");
+      printMatrix(matrixB, size);
+      printf("\n\n\t       = \n");
+      printMatrix(matrixC, size);
+      printf("\n\n");
+    }
 
 
-    //outbuf = rank;
+//    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartcomm);
+//    MPI_Cart_coords(cartcomm, rank, 2, coords);
+//    MPI_Cart_shift(cartcomm, 0, 1, &nbrs[UP], &nbrs[DOWN]);
+//    MPI_Cart_shift(cartcomm, 1, 1, &nbrs[LEFT], &nbrs[RIGHT]);
+
 
 //     for(i=0; i<4; i++) {
 //       dest = nbrs[i];
@@ -125,19 +158,15 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr) {
    char line[120];
    char *tok;
 
-   //printf("READ INPUT FILE\n");
    fr = fopen("data.txt", "rt");
    while(fgets(line, 120, fr) != NULL) {
-      //printf("LINE: '%s'\n", line);
 
       if(line[0] == '\0' || line[0] == '\n' || line[0] == '\r' || line[0] == '\t' || line[0] == ' ') {
          // Empty line separating the inputs (size/matrixA/matrixB)
          // IMPORTANT! This marks a state transition
          state++;
          i = 0;
-         //printf("Read separator... New state is %d\n", state);
       } else if(state == 0) {
-         //printf("Read size...\n");
          // Reading first line, containing the Size
          size = atoi(line);
 
@@ -146,7 +175,6 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr) {
          initMatrix(&matrixB, size);
          initMatrix(&matrixC, size);
       } else if(state == 1) {
-         //printf("Read Matrix A (size:%d), line %d...\n", (int)sizeof(matrixA), i);
          // Reading matrix A
          // Initialize this row of the matrix
          j = 0;
@@ -160,7 +188,6 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr) {
          }
          i++;
       } else if(state == 2) {
-         //printf("Read Matrix B, line %d...\n", i);
          // Reading matrix B
          // Initialize this row of the matrix
          matrixB[i] = (int *) malloc(size * sizeof(int));
@@ -169,7 +196,7 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr) {
          tok = (char *) strtok(line, " ");
          while(tok) {
             tmp = atoi(tok);
-            matrixA[i][j] = tmp;
+            matrixB[i][j] = tmp;
             tok = (char *) strtok(NULL, " ");
             j++;
          }
@@ -187,7 +214,7 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr, int ***matrixCPtr) {
 }
 
 /**
- * Initialize a square matrix
+ * Initialize a square matrix of size "size*size"
  */
 void initMatrix(int ***matrixPtr, int size) {
    int i;
@@ -198,4 +225,15 @@ void initMatrix(int ***matrixPtr, int size) {
       matrix[i] = (int *) malloc(sizeof(int) * size);
    }
    *matrixPtr = matrix;
+}
+
+void printMatrix(int **matrix, int size) {
+   int i, j;
+   for(i=0; i<size; i++) {
+      printf("  ");
+      for(j=0; j<size; j++) {
+         printf("%3d ", matrix[i][j]);
+      }
+      printf("\n");
+   }
 }
