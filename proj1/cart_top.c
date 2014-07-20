@@ -27,7 +27,7 @@ int main (int argc, char* argv[])
   int rank, size, numtasks, source, dest, outbuf, i, tag=1, valid=0;
   int inbuf[4]={MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL},
       nbrs[4], dims[2]={4,4},
-      periods[2]={0,0}, reorder=0, coords[2];
+      periods[2]={1,1}, reorder=0, coords[2];
 
   MPI_Request reqs[8];
   MPI_Status stats[8];
