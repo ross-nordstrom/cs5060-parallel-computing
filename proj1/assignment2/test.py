@@ -18,18 +18,20 @@ class Util:
       m = numpy.random.random_integers(0,100, (size,size))
       return m.astype(int)
    @classmethod
-   def testmmult(cls,n,c):
+   def testmmult(cls,n,c, verbose=False):
       # Run the program and check its output
       cmd = ["mpirun","-np",str(n),"-f","mpd.hosts","./mmult.o"]
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
       out, err = p.communicate()
 
       # Convert output into object
-      print "OUTPUT WAS:"
-      print out
+      if verbose:
+         print "OUTPUT WAS:"
+         print out
       outVal = [ map(int,row.split()) for row in out.split("\n") if(len(row.split()) > 0) ]
-      print "ACCURACY:"
-      print (c == outVal)
+      if verbose:
+         print "ACCURACY:"
+         print (c == outVal)
       error = False in (c == outVal)
       return error
 
@@ -61,30 +63,32 @@ print "="
 print c
 print "-----------------------"
 
-if Util.testmmult(4,c):
+if Util.testmmult(4,c, True):
    errorCnt += 1
 
-# cmd = ["mv","data.txt","data.bak"]
-# p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-# out, err = p.communicate()
+cmd = ["mv","data.txt","data.bak"]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+out, err = p.communicate()
 
-for proc in []: #, 9, 16, 25, 36, 49, 64, 81, 100]:
+print " "
+print "Test random inputs..."
+inputSets = [4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 10, 10, 10, 20, 20, 20, 30, 30]
+for proc in inputSets:
    n = proc
-   print "Test with {} processors".format(proc)
+   # print "Test with {} processors".format(proc)
    a = Util.rand_matrix(n)
    b = Util.rand_matrix(n)
    c = Util.mmult(a,b)
 
-   print a
-   print "*"
-   print b
-   print "="
-   print c
-   print "-----------------------"
+   # print a
+   # print "*"
+   # print b
+   # print "="
+   # print c
+   # print "-----------------------"
 
    # Setup data.txt input
    fo = open("data.txt", "wb")
-   print "File name: "+fo.name
    fo.write(str(n)+"\n")
    fo.write(" \n")
    for row in a:
@@ -95,14 +99,21 @@ for proc in []: #, 9, 16, 25, 36, 49, 64, 81, 100]:
    fo.close()
 
    if Util.testmmult(n,c):
+      print "Tested with {} processors\t\033[91m{}\033[0m".format(proc, 'X')
       errorCnt += 1
+   else:
+      checkMark = u'\u2713'
+      print u"Tested with {} processors\t\033[92m{}\033[0m".format(proc, checkMark)
 
 
-# cmd = ["mv","data.bak","data.txt"]
-# p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-# out, err = p.communicate()
 
+cmd = ["mv","data.bak","data.txt"]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+out, err = p.communicate()
+
+print "Ran against {} different input sets...".format(1+len(inputSets))
+print "\n\n"
 if errorCnt == 0:
-   print "SUCCESS!"
+   print u"Success!\t\t\033[92m{}\033[0m".format(proc, checkMark)
 else:
-   print "AH! {} errors...".format(errorCnt)
+   print "AH! {} errors...\t\033[91m{}\033[0m".format(errorCnt, 'X')
