@@ -35,6 +35,11 @@ int **matrixC;
 
 int main (int argc, char* argv[])
 {
+  /**
+   * size = width = height of matrices
+   * numtasks = number of processes
+   * expect size == numtasks
+   */
   int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to, tmp;
   int inbuf[4]={MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL,MPI_PROC_NULL},
       nbrs[4], dims[2]={4,4},
@@ -74,9 +79,9 @@ int main (int argc, char* argv[])
     if(DBG) printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
     for(i=1; i<numtasks; i++) {
       // Master process must send asynchronously
-      MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
-      MPI_Isend(matrixA[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
-      MPI_Isend(matrixB[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
+      MPI_Isend(&size, 1, MPI_INT, i/numtasks, tag, MPI_COMM_WORLD, &request);
+      MPI_Isend(matrixA[i], size, MPI_INT, i/numtasks, i%numtasks, MPI_COMM_WORLD, &request);
+      MPI_Isend(matrixB[i], size, MPI_INT, i/numtasks, i%numtasks, MPI_COMM_WORLD, &request);
       myMatrixA = matrixA[0]; //(int *) malloc(sizeof(int) * size);
       myMatrixB = matrixB[0]; //(int *) malloc(sizeof(int) * size);
       myMatrixC = (int *) malloc(sizeof(int) * size);
@@ -87,8 +92,10 @@ int main (int argc, char* argv[])
     myMatrixA = (int *) malloc(sizeof(int) * size);
     myMatrixB = (int *) malloc(sizeof(int) * size);
     myMatrixC = (int *) malloc(sizeof(int) * size);
-    MPI_Recv(myMatrixA, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    MPI_Recv(myMatrixB, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    for(i=0; i<(size/numtasks); i++) {
+      MPI_Recv(myMatrixA[i], size, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+      MPI_Recv(myMatrixB[i], size, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+    }
     if(DBG) printf("Proc #%d got size: %d\n", rank, size);
   }
 
