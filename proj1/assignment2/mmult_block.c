@@ -183,7 +183,7 @@ int main (int argc, char* argv[])
     for(i=0; i<myN; i++) {
       myBColumn[i] = myMatrixB[i][j];
     }
-    if(DBG) printf("[%d] (%d) My B Column: [%d,%d]\n", rank, j, myBColumn[0], myBColumn[1]);
+    if(DBG && rank==0) printf("[%d] (%d) My B Column: [%d,%d]\n", rank, j, myBColumn[0], myBColumn[1]);
     // Now, iterate over each of my rows
     for(i=0; i<myN; i++) {
       /**
@@ -195,12 +195,12 @@ int main (int argc, char* argv[])
       for(k=0; k<rtP; k++) {
         if(nbrsA[k] != rank) {
           // Tag with my negative rank to mark it as MY MATRIX A
-          if(DBG) printf("[%d] (%d,%d) Send myMatrixA[%d] to %d\n",rank,j,i,i,nbrsA[k]);
+          if(DBG && rank==0) printf("[%d] (%d,%d) Send myMatrixA[%d] to %d\n",rank,i,j,i,nbrsA[k]);
           MPI_Isend(myMatrixA[i], myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &request);
         }
         if(nbrsB[k] != rank) {
           // Tag with my positive rank to mark it as MY MATRIX B
-          if(DBG) printf("[%d] (%d,%d) Send myBColumn[%d] to %d\n",rank,j,i,i,nbrsB[k]);
+          if(DBG && rank==0) printf("[%d] (%d,%d) Send myBColumn to %d\n",rank,i,j,nbrsB[k]);
           MPI_Isend(myBColumn, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &request);
         }
       } // for each neighbor
@@ -211,29 +211,30 @@ int main (int argc, char* argv[])
        */
       myMatrixC[i][j] = 0;
       for(k=0; k<rtP; k++) {
+        if(DBG && rank==0) printf("[%d] (%d,%d) Nbr:%d, VertNbrRank:%d, HorizNbrRank:%d\n",rank,i,j,k,nbrsA[k],nbrsB[k]);
         if(nbrsA[k] != rank) {
           // Receive row of A from this neighbor
-          if(DBG) printf("[%d] (%d,%d) Get workingA from %d\n",rank,j,i,nbrsA[k]);
+          if(DBG && rank==0) printf("[%d] (%d,%d) Get workingA from %d\n",rank,i,j,nbrsA[k]);
           MPI_Recv(workingA, myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &status);
         } else {
-          workingA = myMatrixA[i];
+          memcpy(workingA, myMatrixA[i], myN*sizeof(int));
         }
         if(nbrsB[k] != rank) {
           // Receive column of B from this neighbor
-          if(DBG) printf("[%d] (%d,%d) Get workingB from %d\n",rank,j,i,nbrsB[k]);
+          if(DBG && rank==0) printf("[%d] (%d,%d) Get workingB from %d\n",rank,i,j,nbrsB[k]);
           MPI_Recv(workingB, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &status);
         } else {
-          workingB = myBColumn;
+          memcpy(workingB, myBColumn, myN*sizeof(int));
         }
 
         // Calculate with these two neighbors' data
-        if(DBG) printf("[%d] (%d,%d) Calculate: workingA = [%d,%d]\n",rank,j,i,workingA[0],workingA[1]);
-        if(DBG) printf("[%d] (%d,%d) Calculate: workingB = [%d,%d]\n",rank,j,i,workingB[0],workingB[1]);
+        if(DBG && rank==0) printf("[%d] (%d,%d) Calculate: workingA = [%d,%d]\n",rank,i,j,workingA[0],workingA[1]);
+        if(DBG && rank==0) printf("[%d] (%d,%d) Calculate: workingB = [%d,%d]\n",rank,i,j,workingB[0],workingB[1]);
         for(l=0; l<myN; l++) {
           tmp = workingA[l]*workingB[l];
           myMatrixC[i][j] += tmp;
         }
-        if(DBG) printf("[%d] (%d,%d) Calculated: myMatrixC[*][%d] = [%d,%d]\n",rank,j,i,j,myMatrixC[0][j],myMatrixC[1][j]);
+        if(DBG && rank==0) printf("[%d] (%d,%d) Calculated: myMatrixC[*][%d] = [%d,%d]\n",rank,i,j,j,myMatrixC[0][j],myMatrixC[1][j]);
 
       } // for each neighbor
 
@@ -243,7 +244,7 @@ int main (int argc, char* argv[])
     } // for each of my rows
   } // for each of my columns
 
-  MPI_Barrier(MPI_COMM_WORLD); 
+  MPI_Barrier(MPI_COMM_WORLD);
   if(DBG) {
     // Verify correct assignment
     for(i=0; i<numtasks; i++) {
@@ -255,76 +256,6 @@ int main (int argc, char* argv[])
       MPI_Barrier(MPI_COMM_WORLD);
     }
   } // DBG
-
-/*
-  // Assume each process just has a single row
-  from = rank * size/numtasks;
-  to = (rank+1) * size/numtasks;
-
-  // Each process's job loop -- should just have 1 row per process
-  for (i=from; i<to; i++) {
-
-    // Loop over each element in the row (of matrixA)
-    for (j=0; j<size; j++) {
-
-      // Asynchronously send my value to everyone else
-      for(k=1; k < size; k++) {
-        sendRank = (rank + k) % size;
-        // if(sendRank == 0 )
-        //   if(DBG)  printf("(%d)   [%d] Send %d to [%d]\n", j, rank, myMatrixB[j], sendRank);
-        MPI_Isend(&myMatrixB[j],        1, MPI_INT, sendRank, 1, MPI_COMM_WORLD, &request);
-      }
-
-      myMatrixC[j]=0;
-      tmp = 0;
-      for (k=0; k<size; k++) {
-        if(k == rank) {
-          tmp = myMatrixB[j];
-        } else {
-          MPI_Recv(&tmp, 1, MPI_INT, k, 1, MPI_COMM_WORLD, &status);
-        }
-        if(rank == 0 && DBG)   printf("%d. RCVD tmp <== %d, myMatrixC[%d] = %d\n", j,tmp, j, myMatrixC[j]);
-        tmp = myMatrixA[k]*tmp;
-        myMatrixC[j] += tmp;
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-    } // for(j)
-  } // for(i)
-  if(DBG) printf("[%d] myMatrixC = [%d,%d,%d,%d]\n",rank, myMatrixC[0],myMatrixC[1],myMatrixC[2],myMatrixC[3]);
-
-  if(rank == 0) {
-    initMatrix(&matrixC, size);
-    matrixC[0] = myMatrixC;
-    for(k=1;k<size;k++) {
-      // receive myMatrixC from process "k"
-      if(DBG) printf("Collect myMatrixC from process %d\n", k);
-      matrixC[k] = malloc(size*sizeof(int));
-      MPI_Recv(matrixC[k], size, MPI_INT, k, 2, MPI_COMM_WORLD, &status);
-      if(DBG) printf("Collected from %d\n", k);
-    }
-  } else {
-    // send myMatrixC to root process
-    if(DBG) printf("[%d] Return myMatrixC to root\n", rank);
-    MPI_Send(myMatrixC, size, MPI_INT, 0, 2, MPI_COMM_WORLD);
-  }
-
-  if(DBG) printf("[%d] Done.\n", rank);
-  MPI_Barrier(MPI_COMM_WORLD);
-
-  if(rank == 0) {
-    // printf("DONE!\n");
-
-    if(DBG) {
-      printf("\n\n");
-      printMatrix(matrixA, size);
-      printf("\n\t       * \n");
-      printMatrix(matrixB, size);
-      printf("\n\t       = \n");
-    }
-    printMatrix(matrixC, size);
-  }
-
-*/ 
 
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
