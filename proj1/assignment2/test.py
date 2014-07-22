@@ -80,7 +80,7 @@ cmd = ["mv","data.txt","data.bak"]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
 out, err = p.communicate()
 
-cmd = ["rm","data*.err"]
+cmd = ["rm","data*.err", "data*.exp"]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
 out, err = p.communicate()
 
