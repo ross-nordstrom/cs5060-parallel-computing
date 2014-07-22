@@ -257,6 +257,40 @@ int main (int argc, char* argv[])
     }
   } // DBG
 
+  /**
+   * Consolidate the results onto master process
+   */
+  if(rank != 0) {
+    for(i=0; i<myN; i++) {
+      // Tag it with which row this is
+      MPI_Isend(myMatrixC[i], myN, MPI_INT, 0, i, MPI_COMM_WORLD, &request);
+    } // for each of my rows
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(rank == 0) {
+    for(k=0;k<numtasks;k++) {
+      if(DBG) printf("(PROC:%d) Receive theirMatrixC\n",k);
+      index1 = rank / rtP; // Get the row this processor is in
+      index2 = rank % rtP; // Get the column this processor is in
+      for(i=0; i<myN; i++) {
+        if(DBG) printf("(PROC:%d, %d) Receive a row\n",k, i);
+        if(rank == 0) {
+          if(DBG) printf("(PROC:%d, %d) myMatrixC[%d] = [%d,%d]\n",k, i, i, myMatrixC[i][0], myMatrixC[i][1]);
+          for(j=0; j<myN; j++) matrixC[i][j] = myMatrixC[i][j];
+          // memcpy(matrixC[i], myMatrixC[i], myN);
+        } else {
+          MPI_Recv((matrixC[index1*myN+i] + index2*myN), myN, MPI_INT, k, i, MPI_COMM_WORLD, &status);
+        }
+        if(DBG) printf("(PROC:%d, %d) matrixC[%d]=%d\n",k, i, i, matrixC[i][0], matrixC[i][1]);
+      } // for each of their rows
+    } // for each slave process
+
+  }
+
+
+  if(rank == 0) {
+    printMatrix(matrixC, myN);
+  }
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
   return 0;
