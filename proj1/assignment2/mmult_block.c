@@ -39,10 +39,10 @@ int main (int argc, char* argv[])
   int dims[2],
       periods[2]={0,0}, reorder=1, coords[2];
   int rankOffset, sendRank, recvRank, rtP;
-  int *myMatrixA, *myMatrixB, *myMatrixC;
+  int **myMatrixA, **myMatrixB, **myMatrixC;
   int *workingA, *workingB;
   int *nbrsA, *nbrsB;
-  int index1, index2, nbr1,nbr2;
+  int index1, index2, nbr1, nbr2, myN;
   char *tmpStr;
   FILE *fr;
   MPI_Status status;
@@ -74,13 +74,23 @@ int main (int argc, char* argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 
   // Number of processes in each dimension (i.e. there are rtP processes in each row, and rtP in each column)
-  rtP = sqrt(numtasks);
+  rtP = (int) sqrt(numtasks);
   dims[0] = rtP;
   dims[1] = rtP;
+  myN = size / rtP;
   nbrsA = malloc( sizeof(int) * rtP);
   nbrsB = malloc( sizeof(int) * rtP);
 
   if(DBG) printf("[%d] Dims: [%d,%d]\n", rank, dims[0], dims[1]);
+
+  /**
+   * Validate inputs
+   */
+  if(rank==0 && size % rtP != 0) {
+    if(DBG) printf("ERROR: Expected size mod sqrt(numtasks) == 0\n");
+    MPI_Finalize();
+    return 1;
+  }
 
   /**
    * Setup the matrix partition
@@ -94,6 +104,9 @@ int main (int argc, char* argv[])
   nbrsA[coords[1]] = rank;
   nbrsB[coords[0]] = rank;
 
+  /**
+   * Figure out who my vertical and horizontal neighbors are, using cartesian communication
+   */
   for(i=1; i<rtP; i++) {
     // My Y-pos - StepSize, mo
     index1 = (coords[0]-i); // Up
@@ -118,77 +131,43 @@ int main (int argc, char* argv[])
     if(index2 >= 0 && index1 < rtP) nbrsA[index2] = nbr2;
   }
 
+  /**
+   * Wait to make sure everyone knows their neighbors
+   */
   MPI_Barrier(MPI_COMM_WORLD);
   if(DBG) printf("[%d] nbrsA: [%d,%d] nbrsB: [%d,%d]\n", rank, nbrsA[0], nbrsA[1], nbrsB[0], nbrsB[1]);
-
-
-  /**
-   * Validate inputs
-   */
-  if(rank==0 && size % (int) sqrt(numtasks) != 0) {
-    if(DBG) printf("ERROR: Expected size mod sqrt(numtasks) == 0\n");
-    MPI_Finalize();
-    return 1;
-  }
 
   /**
    * Share the starting data, giving the appropriate data to each process
    *
    */
-  if(rank == 0) {
-    if(DBG) printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
+  myMatrixA = (int **) malloc(sizeof(int *) * myN);
+  myMatrixB = (int **) malloc(sizeof(int *) * myN);
+  myMatrixC = (int **) malloc(sizeof(int *) * myN);
 
+  index1 = rank / rtP; // Get the row this processor is in
+  index2 = rank % rtP; // Get the column this processor is in
+  for(i=0; i<myN; i++) {
+    // Initliaze this row of each of my matrices
+    myMatrixA[i] = (int *) malloc(sizeof(int) * myN);
+    myMatrixB[i] = (int *) malloc(sizeof(int) * myN);
 
-    /**
-     * Setup the matrix partition
-     */
-     dims[0] = size;
-     dims[1] = size;
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartcomm);
-    // Each process knows where he is relative to the other processes
-    MPI_Cart_coords(cartcomm, rank, 2, coords);
+    for(j=0; j<myN; j++) {
+      myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
+      myMatrixB[i][j] = matrixB[index1*myN+i][index2*myN+j];
+    } // iterate over each column
+  } // iterate over each row
 
-    // TODO - Use this instead of for loop
-    // /**
-    //  * Setup the datatype representing sub-matrices
-    //  */
-    // MPI_Type_vector( (size/rtP), (size/rtP), size, MPI_INT, &typeSubMatrix );
-
-    for(i=1; i<numtasks; i++) {
-      // Master process must send asynchronously
-      // MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
-      MPI_Isend(matrixA[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
-      MPI_Isend(matrixB[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
-
-      myMatrixA = matrixA[0]; //(int *) malloc(sizeof(int) * size);
-      myMatrixB = matrixB[0]; //(int *) malloc(sizeof(int) * size);
-      myMatrixC = (int *) malloc(sizeof(int) * size);
+  MPI_Barrier(MPI_COMM_WORLD); 
+  for(i=0; i<numtasks; i++) {
+    if(rank==i) {
+      if(DBG) printf("[%d] MY MATRIX B: \n", rank);
+      if(DBG) printMatrix(myMatrixB, myN);
+      if(DBG) printf("\n");
     }
-  } else {
-
-
-
-    // printf("Proc #%d waiting for size...\n", rank);
-    // MPI_Recv(&size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-
-    /**
-     * Setup the datatype representing sub-matrices
-     */
-    MPI_Type_vector( (size/rtP), (size/rtP), size, MPI_INT, &typeSubMatrix );
-
-    /**
-     * Each process has an array of size (n/rtP)*(n/rtP)
-     */
-    myMatrixA = (int **) malloc(sizeof(int *) * (size/rtP) );
-    myMatrixB = (int **) malloc(sizeof(int *) * (size/rtP) );
-    myMatrixC = (int **) malloc(sizeof(int *) * (size/rtP) );
-    MPI_Recv(myMatrixA, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    MPI_Recv(myMatrixB, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    if(DBG) printf("Proc #%d got size: %d\n", rank, size);
+    MPI_Barrier(MPI_COMM_WORLD);
   }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-
+/*
   // Assume each process just has a single row
   from = rank * size/numtasks;
   to = (rank+1) * size/numtasks;
@@ -255,6 +234,8 @@ int main (int argc, char* argv[])
     }
     printMatrix(matrixC, size);
   }
+
+*/ 
 
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
