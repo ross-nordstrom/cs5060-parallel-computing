@@ -46,26 +46,24 @@ int main (int argc, char* argv[])
   MPI_Status status;
   MPI_Request request;
 
+  if(DBG) printf("Read input file\n");
+  size = readInputFile(&matrixA, &matrixB);
+  if(DBG) {
+    printf("Size is %d\n", size);
+    printf("Matrix A:\n");
+    printMatrix(matrixA, size);
+    printf("\nMatrix B:\n");
+    printMatrix(matrixB, size);
+    printf("\n\n");
+    printf("NumTasks is %d\n", numtasks);
+  }
+
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 
-  if(rank == 0) {
-    if(DBG) printf("Read input file\n");
-    size = readInputFile(&matrixA, &matrixB);
-    if(DBG) {
-      printf("Size is %d\n", size);
-      printf("Matrix A:\n");
-      printMatrix(matrixA, size);
-      printf("\nMatrix B:\n");
-      printMatrix(matrixB, size);
-      printf("\n\n");
-      printf("NumTasks is %d\n", numtasks);
-    }
-  }
-
-  if(rank==0 && size % numtasks != 0) {
-    if(DBG) printf("ERROR: Expected size mod numtasks == 0\n");
+  if(size % numtasks != 0) {
+    if(rank==0 && DBG) printf("ERROR: Expected size mod numtasks == 0\n");
     MPI_Finalize();
     return 1;
   }
@@ -162,7 +160,7 @@ int main (int argc, char* argv[])
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Finalize();
+  if(rank == 0) MPI_Finalize();
   return 0;
 }
 

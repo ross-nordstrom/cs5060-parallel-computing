@@ -22,7 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
-#define DBG    0
+#define DBG    1
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -299,7 +299,7 @@ int main (int argc, char* argv[])
     printMatrix(matrixC, size);
   }
   MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Finalize();
+  if(rank == 0) MPI_Finalize();
   return 0;
 }
 

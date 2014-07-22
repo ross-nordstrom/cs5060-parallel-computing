@@ -18,19 +18,19 @@ class Util:
       m = numpy.random.random_integers(0,100, (size,size))
       return m.astype(int)
    @classmethod
-   def testmmult(cls,n,c, verbose=False):
+   def testmmult(cls,p,c,script, verbose=False):
       # Run the program and check its output
-      cmd = ["mpirun","-np",str(n),"-f","mpd.hosts","./mmult_block.o"]
+      cmd = ["mpirun","-np",str(p),"-f","mpd.hosts",script]
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
       out, err = p.communicate()
 
-      if 'ERROR' in out or out.isspace() or not out:
-         return True
-
       # Convert output into object
-      if verbose or True:
+      if verbose:
          print "OUTPUT WAS:"
          print out
+
+      if 'ERROR' in out or out.isspace() or not out:
+         return True
       outVal = [ map(int,row.split()) for row in out.split("\n") if(len(row.split()) > 0) ]
       if verbose:
          print "ACCURACY:"
@@ -41,6 +41,7 @@ class Util:
 
 
 print "Verify matrix multiplication"
+print "Test with sample data..."
 
 errorCnt = 0
 
@@ -66,18 +67,28 @@ print "="
 print c
 print "-----------------------"
 
-if Util.testmmult(4,c, True):
-   errorCnt += 1
+for scheme in ['stripe','block']:
+   script = "./mmult_"+scheme+".o"
+   if Util.testmmult(4,c,script):
+      print "Tested sample data\t\033[91m{}\033[0m     \t{}".format('X', scheme)
+      errorCnt += 1
+   else:
+      checkMark = u'\u2713'
+      print u"Tested sample data\t\033[92m{}\033[0m     \t{}".format(checkMark, scheme)
 
 cmd = ["mv","data.txt","data.bak"]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
 out, err = p.communicate()
 
+cmd = ["rm","data*.err"]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+out, err = p.communicate()
+
 print " "
 print "Test random inputs..."
-inputSets = [4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 10, 10, 10, 20, 20, 20, 30, 40]
-for proc in inputSets:
-   n = proc
+inputSets = [[4,4],[4,6],[4,8],[4,24],[9,9],[9,18],[9,27],[16,16],[16,32],[25,25],[25,50]]
+for proc,n in inputSets:
+   # n = proc*proc
    # print "Test with {} processors".format(proc)
    a = Util.rand_matrix(n)
    b = Util.rand_matrix(n)
@@ -101,12 +112,20 @@ for proc in inputSets:
       fo.write( " ".join(map(str,row)) +"\n" )
    fo.close()
 
-   if Util.testmmult(n,c):
-      print "Tested with {} processors\t\033[91m{}\033[0m".format(proc, 'X')
-      errorCnt += 1
-   else:
-      checkMark = u'\u2713'
-      print u"Tested with {} processors\t\033[92m{}\033[0m".format(proc, checkMark)
+   for scheme in ['stripe','block']:
+      script = "./mmult_"+scheme+".o"
+      if Util.testmmult(proc,c,script):
+         print "Tested with P:{}, N: {}\t\033[91m{}\033[0m  [{}]\t{}".format(proc, n, 'X', errorCnt, scheme)
+         cmd = ["cp","data.txt","data"+str(errorCnt)+".err"]
+         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+         out, err = p.communicate()
+         errf = open( 'data'+str(errorCnt)+'.exp', 'w' )
+         errf.write(str(c)+"\n")
+         errf.close()
+         errorCnt += 1
+      else:
+         checkMark = u'\u2713'
+         print u"Tested with P:{}, N: {}\t\033[92m{}\033[0m     \t{}".format(proc, n, checkMark, scheme)
 
 
 
