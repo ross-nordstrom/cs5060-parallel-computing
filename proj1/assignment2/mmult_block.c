@@ -196,12 +196,12 @@ int main (int argc, char* argv[])
         if(nbrsA[k] != rank) {
           // Tag with my negative rank to mark it as MY MATRIX A
           if(DBG) printf("[%d] (%d,%d) Send myMatrixA[%d] to %d\n",rank,j,i,i,nbrsA[k]);
-          MPI_Isend(&myMatrixA[i], myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &request);
+          MPI_Isend(myMatrixA[i], myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &request);
         }
         if(nbrsB[k] != rank) {
           // Tag with my positive rank to mark it as MY MATRIX B
           if(DBG) printf("[%d] (%d,%d) Send myBColumn[%d] to %d\n",rank,j,i,i,nbrsB[k]);
-          MPI_Isend(&myBColumn, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &request);
+          MPI_Isend(myBColumn, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &request);
         }
       } // for each neighbor
       // Synchronize to ensure all messages have been sent
