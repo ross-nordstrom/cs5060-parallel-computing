@@ -31,7 +31,6 @@ void printMatrix(int **matrix, int size);
 
 int **matrixA;
 int **matrixB;
-int **matrixC;
 
 int main (int argc, char* argv[])
 {
@@ -39,6 +38,7 @@ int main (int argc, char* argv[])
   int dims[2],
       periods[2]={0,0}, reorder=1, coords[2];
   int rankOffset, sendRank, recvRank, rtP;
+  int **matrixC;
   int **myMatrixA, **myMatrixB, **myMatrixC;
   int *workingA, *workingB, *myBColumn;
   int *nbrsA, *nbrsB;
@@ -268,20 +268,27 @@ int main (int argc, char* argv[])
   }
   MPI_Barrier(MPI_COMM_WORLD);
   if(rank == 0) {
+    if(DBG) printf("Initialize matrixC...\n");
+    initMatrix(&matrixC, size);
+    if(DBG) printf("Initialized matrixC.\n");
+
     for(k=0;k<numtasks;k++) {
       if(DBG) printf("(PROC:%d) Receive theirMatrixC\n",k);
-      index1 = rank / rtP; // Get the row this processor is in
-      index2 = rank % rtP; // Get the column this processor is in
+      index1 = k / rtP; // Get the row this processor is in
+      index2 = k % rtP; // Get the column this processor is in
       for(i=0; i<myN; i++) {
         if(DBG) printf("(PROC:%d, %d) Receive a row\n",k, i);
-        if(rank == 0) {
+        if(k == 0) {
           if(DBG) printf("(PROC:%d, %d) myMatrixC[%d] = [%d,%d]\n",k, i, i, myMatrixC[i][0], myMatrixC[i][1]);
-          for(j=0; j<myN; j++) matrixC[i][j] = myMatrixC[i][j];
-          // memcpy(matrixC[i], myMatrixC[i], myN);
+          workingA = myMatrixC[i];
         } else {
-          MPI_Recv((matrixC[index1*myN+i] + index2*myN), myN, MPI_INT, k, i, MPI_COMM_WORLD, &status);
+          MPI_Recv(workingA, myN, MPI_INT, k, i, MPI_COMM_WORLD, &status);
+          if(DBG) printf("(PROC:%d, %d) workingC[%d]=[%d,%d]\n",k, i, i, workingA[0], workingA[1]);
+          // for(j=0;j<myN;j++) matrixC[index1*myN + i][index2*myN + j] = workingA[j];
         }
-        if(DBG) printf("(PROC:%d, %d) matrixC[%d]=%d\n",k, i, i, matrixC[i][0], matrixC[i][1]);
+        memcpy( (matrixC[index1*myN+i] + index2*myN), workingA, myN*sizeof(int));
+        // memcpy(matrixC[index1*myN+i] + index2*myN), workingA, myN*sizeof(int));
+        if(DBG) printf("(PROC:%d, %d) matrixC[%d]=[%d,%d]\n",k, i, i, matrixC[index1*myN + i][0], matrixC[index1*myN + i][1]);
       } // for each of their rows
     } // for each slave process
 
@@ -289,7 +296,7 @@ int main (int argc, char* argv[])
 
 
   if(rank == 0) {
-    printMatrix(matrixC, myN);
+    printMatrix(matrixC, size);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
