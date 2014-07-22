@@ -22,7 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
-#define DBG    0
+#define DBG    1
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -36,17 +36,35 @@ int **matrixC;
 int main (int argc, char* argv[])
 {
   int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to, tmp;
-  int dims[2]={4,4},
+  int dims[2],
       periods[2]={0,0}, reorder=1, coords[2];
   int rankOffset, sendRank, recvRank, rtP;
-  int **myMatrixA, **myMatrixB, **myMatrixC;
+  int *myMatrixA, *myMatrixB, *myMatrixC;
   int *workingA, *workingB;
   int *nbrsA, *nbrsB;
+  int index1, index2, nbr1,nbr2;
   char *tmpStr;
   FILE *fr;
   MPI_Status status;
   MPI_Request request;
+  MPI_Comm cartcomm;
   MPI_Datatype typeSubMatrix;  // We will create an MPI datatype to represent the sub-matrices
+
+
+  /**
+   * Initialize matrix A and B, and the size (n)
+   */
+  if(DBG) printf("Read input file\n");
+  size = readInputFile(&matrixA, &matrixB);
+  if(DBG) {
+    printf("Size is %d\n", size);
+    printf("Matrix A:\n");
+    printMatrix(matrixA, size);
+    printf("\nMatrix B:\n");
+    printMatrix(matrixB, size);
+    printf("\n\n");
+    printf("NumTasks is %d\n", numtasks);
+  }
 
   /**
    * Setup the processes
@@ -54,6 +72,16 @@ int main (int argc, char* argv[])
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
+
+  // Number of processes in each dimension (i.e. there are rtP processes in each row, and rtP in each column)
+  rtP = sqrt(numtasks);
+  dims[0] = rtP;
+  dims[1] = rtP;
+  nbrsA = malloc( sizeof(int) * rtP);
+  nbrsB = malloc( sizeof(int) * rtP);
+
+  if(DBG) printf("[%d] Dims: [%d,%d]\n", rank, dims[0], dims[1]);
+
   /**
    * Setup the matrix partition
    */
@@ -61,38 +89,43 @@ int main (int argc, char* argv[])
   // Each process knows where he is relative to the other processes
   MPI_Cart_coords(cartcomm, rank, 2, coords);
 
-  // Number of processes in each dimension (i.e. there are rtP processes in each row, and rtP in each column)
-  rtP = sqrt(numtasks);
+  if(DBG) printf("[%d] Coords: (%d,%d)\n", rank, coords[0], coords[1]);
 
-  nbrsA[coords[0]] = rank;
-  nbrsB[coords[1]] = rank;
-  for(i=1; i<rtP, i++) {
-    MPI_Cart_shift(cartcomm, 0, i, &nbrsB[ (coords[1]-i) % rtP ], &nbrsB[ (coords[1]+i) % rtP ]);
-    MPI_Cart_shift(cartcomm, 1, i, &nbrsA[ (coords[0]-i) % rtP ], &nbrsA[ (coords[0]+i) % rtP ]);
+  nbrsA[coords[1]] = rank;
+  nbrsB[coords[0]] = rank;
+
+  for(i=1; i<rtP; i++) {
+    // My Y-pos - StepSize, mo
+    index1 = (coords[0]-i); // Up
+    index2 = (coords[0]+i);
+
+    if(DBG) printf("[%d] (%d) U/D --  i1: %d, i2: %d\n", rank, i, index1, index2);
+
+    MPI_Cart_shift(cartcomm, 0, i, &nbr1, &nbr2);
+    
+    if(DBG) printf("[%d] (%d) U/D --  n1: %d, n2: %d\n", rank, i, nbr1, nbr2);
+    if(index1 >= 0 && index1 < rtP) nbrsB[index1] = nbr1;
+    if(index2 >= 0 && index1 < rtP) nbrsB[index2] = nbr2;
+
+    index1 = coords[1] - i;
+    index2 = coords[1] + i;
+    if(DBG) printf("[%d] (%d) L/R --  i1: %d, i2: %d\n", rank, i, index1, index2);
+    
+    MPI_Cart_shift(cartcomm, 1, i,  &nbr1, &nbr2);
+
+    if(DBG) printf("[%d] (%d) L/R --  n1: %d, n2: %d\n", rank, i, nbr1, nbr2);
+    if(index1 >= 0 && index1 < rtP) nbrsA[index1] = nbr1;
+    if(index2 >= 0 && index1 < rtP) nbrsA[index2] = nbr2;
   }
 
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(DBG) printf("[%d] nbrsA: [%d,%d] nbrsB: [%d,%d]\n", rank, nbrsA[0], nbrsA[1], nbrsB[0], nbrsB[1]);
 
-  /**
-   * Initialize matrix A and B, and the size (n)
-   */
-  if(rank == 0) {
-    if(DBG) printf("Read input file\n");
-    size = readInputFile(&matrixA, &matrixB);
-    if(DBG) {
-      printf("Size is %d\n", size);
-      printf("Matrix A:\n");
-      printMatrix(matrixA, size);
-      printf("\nMatrix B:\n");
-      printMatrix(matrixB, size);
-      printf("\n\n");
-      printf("NumTasks is %d\n", numtasks);
-    }
-  }
 
   /**
    * Validate inputs
    */
-  if(rank==0 && size % sqrt(numtasks) != 0) {
+  if(rank==0 && size % (int) sqrt(numtasks) != 0) {
     if(DBG) printf("ERROR: Expected size mod sqrt(numtasks) == 0\n");
     MPI_Finalize();
     return 1;
@@ -105,6 +138,16 @@ int main (int argc, char* argv[])
   if(rank == 0) {
     if(DBG) printf("Proc #%d sending size %d to %d processes...\n", rank, size, numtasks-1);
 
+
+    /**
+     * Setup the matrix partition
+     */
+     dims[0] = size;
+     dims[1] = size;
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &cartcomm);
+    // Each process knows where he is relative to the other processes
+    MPI_Cart_coords(cartcomm, rank, 2, coords);
+
     // TODO - Use this instead of for loop
     // /**
     //  * Setup the datatype representing sub-matrices
@@ -113,7 +156,7 @@ int main (int argc, char* argv[])
 
     for(i=1; i<numtasks; i++) {
       // Master process must send asynchronously
-      MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
+      // MPI_Isend(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &request);
       MPI_Isend(matrixA[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
       MPI_Isend(matrixB[i], size, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
 
@@ -122,8 +165,11 @@ int main (int argc, char* argv[])
       myMatrixC = (int *) malloc(sizeof(int) * size);
     }
   } else {
+
+
+
     // printf("Proc #%d waiting for size...\n", rank);
-    MPI_Recv(&size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+    // MPI_Recv(&size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
 
     /**
      * Setup the datatype representing sub-matrices
@@ -133,9 +179,9 @@ int main (int argc, char* argv[])
     /**
      * Each process has an array of size (n/rtP)*(n/rtP)
      */
-    myMatrixA = (int **) malloc(sizeof(int *) * (n/rtP) );
-    myMatrixB = (int **) malloc(sizeof(int *) * (n/rtP) );
-    myMatrixC = (int **) malloc(sizeof(int *) * (n/rtP) );
+    myMatrixA = (int **) malloc(sizeof(int *) * (size/rtP) );
+    myMatrixB = (int **) malloc(sizeof(int *) * (size/rtP) );
+    myMatrixC = (int **) malloc(sizeof(int *) * (size/rtP) );
     MPI_Recv(myMatrixA, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
     MPI_Recv(myMatrixB, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
     if(DBG) printf("Proc #%d got size: %d\n", rank, size);
