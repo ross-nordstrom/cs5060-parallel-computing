@@ -20,12 +20,15 @@ class Util:
    @classmethod
    def testmmult(cls,n,c, verbose=False):
       # Run the program and check its output
-      cmd = ["mpirun","-np",str(n),"-f","mpd.hosts","./mmult.o"]
+      cmd = ["mpirun","-np",str(n),"-f","mpd.hosts","./mmult_block.o"]
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
       out, err = p.communicate()
 
+      if 'ERROR' in out or out.isspace() or not out:
+         return True
+
       # Convert output into object
-      if verbose:
+      if verbose or True:
          print "OUTPUT WAS:"
          print out
       outVal = [ map(int,row.split()) for row in out.split("\n") if(len(row.split()) > 0) ]
