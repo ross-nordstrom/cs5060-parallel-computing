@@ -195,14 +195,17 @@ int main (int argc, char* argv[])
       for(k=0; k<rtP; k++) {
         if(nbrsA[k] != rank) {
           // Tag with my negative rank to mark it as MY MATRIX A
+          if(DBG) printf("[%d] (%d,%d) Send myMatrixA[%d] to %d\n",rank,j,i,i,nbrsA[k]);
           MPI_Isend(&myMatrixA[i], myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &request);
         }
         if(nbrsB[k] != rank) {
           // Tag with my positive rank to mark it as MY MATRIX B
+          if(DBG) printf("[%d] (%d,%d) Send myBColumn[%d] to %d\n",rank,j,i,i,nbrsB[k]);
           MPI_Isend(&myBColumn, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &request);
         }
       } // for each neighbor
-
+      // Synchronize to ensure all messages have been sent
+      MPI_Barrier(MPI_COMM_WORLD);
       /**
        * Calculate this C element, receiving data as needed from neighbors
        */
@@ -210,22 +213,27 @@ int main (int argc, char* argv[])
       for(k=0; k<rtP; k++) {
         if(nbrsA[k] != rank) {
           // Receive row of A from this neighbor
+          if(DBG) printf("[%d] (%d,%d) Get workingA from %d\n",rank,j,i,nbrsA[k]);
           MPI_Recv(workingA, myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &status);
         } else {
           workingA = myMatrixA[i];
         }
         if(nbrsB[k] != rank) {
           // Receive column of B from this neighbor
-          MPI_Recv(workingB, myN, MPI_INT, nbrsB[k], 1, MPI_COMM_WORLD, &status);
+          if(DBG) printf("[%d] (%d,%d) Get workingB from %d\n",rank,j,i,nbrsB[k]);
+          MPI_Recv(workingB, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &status);
         } else {
           workingB = myBColumn;
         }
 
         // Calculate with these two neighbors' data
+        if(DBG) printf("[%d] (%d,%d) Calculate: workingA = [%d,%d]\n",rank,j,i,workingA[0],workingA[1]);
+        if(DBG) printf("[%d] (%d,%d) Calculate: workingB = [%d,%d]\n",rank,j,i,workingB[0],workingB[1]);
         for(l=0; l<myN; l++) {
           tmp = workingA[l]*workingB[l];
           myMatrixC[i][j] += tmp;
         }
+        if(DBG) printf("[%d] (%d,%d) Calculated: myMatrixC[*][%d] = [%d,%d]\n",rank,j,i,j,myMatrixC[0][j],myMatrixC[1][j]);
 
       } // for each neighbor
 
