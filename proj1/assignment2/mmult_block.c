@@ -86,8 +86,8 @@ int main (int argc, char* argv[])
   /**
    * Validate inputs
    */
-  if(rank==0 && size % rtP != 0) {
-    if(DBG) printf("ERROR: Expected size mod sqrt(numtasks) == 0\n");
+  if(size % rtP != 0) {
+    if(rank==0) printf("ERROR: Expected size mod sqrt(numtasks) == 0\n");
     MPI_Finalize();
     return 1;
   }
