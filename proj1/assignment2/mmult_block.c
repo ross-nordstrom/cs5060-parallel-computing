@@ -22,7 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
-#define DBG    1
+#define DBG    0
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
