@@ -35,12 +35,12 @@ int **matrixC;
 
 int main (int argc, char* argv[])
 {
-  int rank, size, numtasks, source, dest, outbuf, i, j, k, tag=1, valid=0, from, to, tmp;
+  int rank, size, numtasks, source, dest, outbuf, i, j, k, l, tag=1, valid=0, from, to, tmp;
   int dims[2],
       periods[2]={0,0}, reorder=1, coords[2];
   int rankOffset, sendRank, recvRank, rtP;
   int **myMatrixA, **myMatrixB, **myMatrixC;
-  int *workingA, *workingB;
+  int *workingA, *workingB, *myBColumn;
   int *nbrsA, *nbrsB;
   int index1, index2, nbr1, nbr2, myN;
   char *tmpStr;
@@ -138,12 +138,14 @@ int main (int argc, char* argv[])
   if(DBG) printf("[%d] nbrsA: [%d,%d] nbrsB: [%d,%d]\n", rank, nbrsA[0], nbrsA[1], nbrsB[0], nbrsB[1]);
 
   /**
-   * Share the starting data, giving the appropriate data to each process
-   *
+   * Initialize the starting data
    */
   myMatrixA = (int **) malloc(sizeof(int *) * myN);
   myMatrixB = (int **) malloc(sizeof(int *) * myN);
   myMatrixC = (int **) malloc(sizeof(int *) * myN);
+  workingA = (int *) malloc(sizeof(int) * myN);
+  workingB = (int *) malloc(sizeof(int) * myN);
+  myBColumn = (int *) malloc(sizeof(int) * myN);
 
   index1 = rank / rtP; // Get the row this processor is in
   index2 = rank % rtP; // Get the column this processor is in
@@ -151,6 +153,7 @@ int main (int argc, char* argv[])
     // Initliaze this row of each of my matrices
     myMatrixA[i] = (int *) malloc(sizeof(int) * myN);
     myMatrixB[i] = (int *) malloc(sizeof(int) * myN);
+    myMatrixC[i] = (int *) malloc(sizeof(int) * myN);
 
     for(j=0; j<myN; j++) {
       myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
@@ -158,15 +161,93 @@ int main (int argc, char* argv[])
     } // iterate over each column
   } // iterate over each row
 
+  // TODO: Clear matrixA and matrixB from mem
   MPI_Barrier(MPI_COMM_WORLD); 
-  for(i=0; i<numtasks; i++) {
-    if(rank==i) {
-      if(DBG) printf("[%d] MY MATRIX B: \n", rank);
-      if(DBG) printMatrix(myMatrixB, myN);
-      if(DBG) printf("\n");
+  if(DBG) {
+    // Verify correct assignment
+    for(i=0; i<numtasks; i++) {
+      if(rank==i) {
+        if(DBG) printf("[%d] MY MATRIX A: \n", rank);
+        if(DBG) printMatrix(myMatrixA, myN);
+        if(DBG) printf("[%d] MY MATRIX B: \n", rank);
+        if(DBG) printMatrix(myMatrixB, myN);
+        if(DBG) printf("\n");
+      }
+      MPI_Barrier(MPI_COMM_WORLD);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
+  } // DBG
+
+  // Because we have to manually setup each column, operate column by column for better efficiency
+  for(j=0; j<myN; j++) {
+    // Setup my matrix B column
+    for(i=0; i<myN; i++) {
+      myBColumn[i] = myMatrixB[i][j];
+    }
+    if(DBG) printf("[%d] (%d) My B Column: [%d,%d]\n", rank, j, myBColumn[0], myBColumn[1]);
+    // Now, iterate over each of my rows
+    for(i=0; i<myN; i++) {
+      /**
+       * Share my data with all my neighbors
+       *
+       * Send my row to all of my horizontal neighbors, and receive each of their rows
+       * Send my column to all of my vertical neighbors, and receive each of their columns
+       */
+      for(k=0; k<rtP; k++) {
+        if(nbrsA[k] != rank) {
+          // Tag with my negative rank to mark it as MY MATRIX A
+          MPI_Isend(&myMatrixA[i], myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &request);
+        }
+        if(nbrsB[k] != rank) {
+          // Tag with my positive rank to mark it as MY MATRIX B
+          MPI_Isend(&myBColumn, myN, MPI_INT, nbrsB[k], 2, MPI_COMM_WORLD, &request);
+        }
+      } // for each neighbor
+
+      /**
+       * Calculate this C element, receiving data as needed from neighbors
+       */
+      myMatrixC[i][j] = 0;
+      for(k=0; k<rtP; k++) {
+        if(nbrsA[k] != rank) {
+          // Receive row of A from this neighbor
+          MPI_Recv(workingA, myN, MPI_INT, nbrsA[k], 1, MPI_COMM_WORLD, &status);
+        } else {
+          workingA = myMatrixA[i];
+        }
+        if(nbrsB[k] != rank) {
+          // Receive column of B from this neighbor
+          MPI_Recv(workingB, myN, MPI_INT, nbrsB[k], 1, MPI_COMM_WORLD, &status);
+        } else {
+          workingB = myBColumn;
+        }
+
+        // Calculate with these two neighbors' data
+        for(l=0; l<myN; l++) {
+          tmp = workingA[l]*workingB[l];
+          myMatrixC[i][j] += tmp;
+        }
+
+      } // for each neighbor
+
+      // Synchronize on each cell
+      MPI_Barrier(MPI_COMM_WORLD);
+
+    } // for each of my rows
+  } // for each of my columns
+
+  MPI_Barrier(MPI_COMM_WORLD); 
+  if(DBG) {
+    // Verify correct assignment
+    for(i=0; i<numtasks; i++) {
+      if(rank==i) {
+        if(DBG) printf("[%d] MY MATRIX C: \n", rank);
+        if(DBG) printMatrix(myMatrixC, myN);
+        if(DBG) printf("\n");
+      }
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
+  } // DBG
+
 /*
   // Assume each process just has a single row
   from = rank * size/numtasks;
