@@ -4,6 +4,7 @@
  ***/
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <string.h>
 #include <math.h>
 #define DBG    0
@@ -22,11 +23,69 @@ typedef struct {
    pthread_mutex_t read_write_lock; // mutex lock for the shared data structure
 } my_rwlock_t;
 
+/******************************************************************************
+ * Main shared variables and function
+ ***/
+struct my_rwlock_t shared_lock;
+int task_available;
 int main (int argc, char* argv[])
 {
    printf("PROGRAM - START\n");
 
+   /**
+    * Intializations
+    */
+   task_available = 0;
+   my_rwlock_init(&shared_lock);
+
+   /**
+    * Create producer and consumer threads
+    */
+    // TODO
+
+
+   /**
+    * Join producer and consumer threads
+    */
+    // TODO
+
    printf("PROGRAM - END\n");
+}
+
+/******************************************************************************
+ * Producer and producer helper functions
+ *
+ * Based on CS5060/Rao > Lec 6 > Slide 21
+ ***/
+void *producer(void *producer_thread_data) {
+   int inserted;
+   /**
+    * Working loop
+    *
+    * Read each character from "string.txt", one-by-one
+    * Sequentially write each character into the shared circular queue
+    */
+
+    printf("HELLO WORLD - PRODUCER\n");
+
+}
+
+/******************************************************************************
+ * Consumer
+ *
+ * Based on CS5060/Rao > Lec 6 > Slide 21
+ ***/
+void *consumer(void *consumer_thread_data) {
+   int extracted;
+   /**
+    * Working loop
+    *
+    * Read each character from "string.txt", one-by-one
+    * Sequentially write each character into the shared circular queue
+    */
+
+    printf("HELLO WORLD - CONSUMER\n");
+
 }
 
 /******************************************************************************
