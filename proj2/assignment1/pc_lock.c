@@ -166,7 +166,7 @@ void *consumer(void *consumer_thread_data) {
     if(ch != '\n'){
       if(DBG) {
         printf("CONSUMER %ld - DEQ '%c'\n", pthread_self(), ch);
-        printf("\t\t\t\t\t>>>>>>>>>>>>>>> '%c'\n", ch);
+        printf("\t\t\t>>>>>>>>>>>>>>> '%c'\n", ch);
       } else {
         printf("%c", ch);
       }
