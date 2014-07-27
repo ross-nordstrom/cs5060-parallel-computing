@@ -14,17 +14,28 @@
  *
  * From CS5060/Rao > Lec 6 > Slide 36
  ***/
-typedef struct {
+typedef struct my_rwlock_t my_rwlock_t;
+struct my_rwlock_t {
    int readers;                     // count of the number of readers
    int writer;                      // the writer (0/1 int specifying presence)
    pthread_cond_t readers_proceed;  // signaled when readers can proceed
    pthread_cond_t writer_proceed;   // signaled when one of the writers can proceed
    int pending_writers;             // number of pending writers
    pthread_mutex_t read_write_lock; // mutex lock for the shared data structure
-} my_rwlock_t;
+};
 
 /******************************************************************************
- * Main shared variables and function
+ * Function declarations
+ ***/
+void *producer(void *producer_thread_data);
+void *consumer(void *consumer_thread_data);
+void my_rwlock_init(my_rwlock_t *l);
+void my_rwlock_rlock(my_rwlock_t *l);
+void my_rwlock_wlock(my_rwlock_t *l);
+void my_rwlock_unlock(my_rwlock_t *l);
+
+/******************************************************************************
+ * Shared variables and Main function
  ***/
 struct my_rwlock_t shared_lock;
 int task_available;
