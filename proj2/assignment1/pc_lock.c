@@ -33,34 +33,55 @@ void my_rwlock_init(my_rwlock_t *l);
 void my_rwlock_rlock(my_rwlock_t *l);
 void my_rwlock_wlock(my_rwlock_t *l);
 void my_rwlock_unlock(my_rwlock_t *l);
+void setProducerDone();
+int isProducerDone();
+void setDone();
+int isDone();
+int enqueue(char ch);
+char dequeue();
 
 /******************************************************************************
  * Shared variables and Main function
  ***/
-struct my_rwlock_t shared_lock;
-int task_available;
+int idxProduce, idxConsume, queueSize, numConsumers;
+int producerDone, done;
+int sleepProd = 1, sleepCons = 2;
+char *circQueue;
+
+// Locks
+struct my_rwlock_t lockProduce, lockConsume;
+
 int main (int argc, char* argv[])
 {
-   printf("PROGRAM - START\n");
+  if(argc != 3) {
+    printf("PROGRAM - No args given\n");
+    printf("Usage:\t%s QueueSize NumConsumers\n", argv[0]);
+  }
+  printf("PROGRAM - START\n");
 
-   /**
-    * Intializations
-    */
-   task_available = 0;
-   my_rwlock_init(&shared_lock);
+  /**
+  * Intializations
+  */
+  queueSize = (int) atoi(argv[1]);
+  numConsumers = (int) atoi(argv[2]);
+  producerDone = 0;
+  done = 0;
+  printf("PARAMS - Queue Size: %d, Consumers: %d\n", queueSize, numConsumers);
+  my_rwlock_init(&lockProduce);
+  my_rwlock_init(&lockConsume);
 
-   /**
-    * Create producer and consumer threads
-    */
-    // TODO
+  /**
+  * Create producer and consumer threads
+  */
+  // TODO
 
 
-   /**
-    * Join producer and consumer threads
-    */
-    // TODO
+  /**
+  * Join producer and consumer threads
+  */
+  // TODO
 
-   printf("PROGRAM - END\n");
+  printf("PROGRAM - END\n");
 }
 
 /******************************************************************************
@@ -69,16 +90,29 @@ int main (int argc, char* argv[])
  * Based on CS5060/Rao > Lec 6 > Slide 21
  ***/
 void *producer(void *producer_thread_data) {
-   int inserted;
-   /**
-    * Working loop
-    *
-    * Read each character from "string.txt", one-by-one
-    * Sequentially write each character into the shared circular queue
-    */
+  int i;
+  int maxStrSize = 1024*1024;  // Arbitrary max
+  FILE *fr;
+  char *line;
+  /**
+   * Working loop
+   *
+   * Read each character from "string.txt", one-by-one
+   * Sequentially write each character into the shared circular queue
+   */
+  printf("PRODUCER - START\n");
+  fr = fopen("string.txt", "rt");
+  while(fgets(line, maxStrSize, fr) != NULL) {
+    i = 0;
+    while(line[i] != '\n') {
+      if(enqueue(line[i]))
+        i++;
+      sleep(sleepProd);
+    } // each char in line
+  } // each line in file
 
-    printf("HELLO WORLD - PRODUCER\n");
-
+  setProducerDone();
+  printf("PRODUCER - END\n");
 }
 
 /******************************************************************************
@@ -87,16 +121,74 @@ void *producer(void *producer_thread_data) {
  * Based on CS5060/Rao > Lec 6 > Slide 21
  ***/
 void *consumer(void *consumer_thread_data) {
-   int extracted;
-   /**
-    * Working loop
-    *
-    * Read each character from "string.txt", one-by-one
-    * Sequentially write each character into the shared circular queue
-    */
+  char ch;
+  /**
+   * Working loop
+   *
+   * Read and print a character from the shared circular queue
+   */
+  printf("CONSUMER %ld - START\n", pthread_self());
+  while(!isDone()) {
+    ch = dequeue();
+    if(ch != '\n')
+      printf("%c",ch);
+  }
+  printf("CONSUMER %ld - END\n", pthread_self());
+}
 
-    printf("HELLO WORLD - CONSUMER\n");
+/******************************************************************************
+ * Global state
+ ***/
+void setProducerDone() {
+  // TODO - write lock done
+  producerDone = 1;
+}
 
+int isProducerDone() {
+  // TODO - read lock
+  return producerDone;
+}
+
+void setDone() {
+  // TODO - write lock done
+  done = 1;
+}
+
+int isDone() {
+  // TODO - read lock done
+  return done;
+}
+
+/******************************************************************************
+ * Queue methods
+ ***/
+ // Returns success -- failure (1) means you must wait and try again
+int enqueue(char ch) {
+  // TODO: read lock idxProduce
+  // TODO: read lock idxConsume
+  if( (idxProduce+1) % queueSize == idxConsume ) {
+    // Enqueueing right now would over-write data that has NOT been consumed yet
+    return 1;
+  }
+
+  // TODO: write lock idxProduce
+  idxProduce = (idxProduce+1) % queueSize;
+  circQueue[idxProduce] = ch;
+  return 0;
+}
+
+// Returns a character from the queue; if '\n' the queue was empty, try again later
+char dequeue() {
+  // TODO: read lock idxProduce
+  // TODO: read lock idxConsume
+  if( (idxConsume+1) % queueSize == idxProduce ) {
+    // Queue is empty!
+    return '\n';
+  }
+
+  // TODO: write lock idxConsume
+  idxConsume = (idxConsume+1) % queueSize;
+  return circQueue[idxConsume];
 }
 
 /******************************************************************************
