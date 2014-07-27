@@ -8,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #define DBG    1
+#define DBG2   0
 
 /******************************************************************************
  * Read-Write Lock Structure
@@ -39,11 +40,13 @@ void setDone();
 int isDone();
 int enqueue(char ch);
 char dequeue();
+void printQueueState();
 
 /******************************************************************************
  * Shared variables and Main function
  ***/
-int idxProduce=0, idxConsume=-1, queueSize, numConsumers, done;
+int idxProduce=0, idxConsume=0, queueSize, numConsumers, done;
+int sleepProd = 1000*10, sleepCons = 2000*10;
 char *circQueue;
 
 // Locks
@@ -123,11 +126,14 @@ void *producer(void *producer_thread_data) {
   while(fgets(line, maxStrSize, fr) != NULL) {
     ttl = 20;
     if(DBG) printf("PRODUCER - LINE = '%s'\n", line);
-    for(i = 0; i < strlen(line[i]); ttl--) {
+    for(i = 0; i < strlen(line) && line[i] != '\n'; ttl--) {
       if(enqueue(line[i])) {
         if(DBG) printf("PRODUCER - ENQ '%c'\n", line[i]);
         i++;
         ttl = 20;
+      } else {
+      if(DBG) printf("PRODUCER - SLEEP: %d\n", sleepCons);
+        usleep(sleepProd);
       }
     } // each char in line
   } // each line in file
@@ -159,8 +165,15 @@ void *consumer(void *consumer_thread_data) {
     }
     // If we've caught up to the producer, and the producer is done,
     //    then I'M DONE!
-    else if(isDone())
-      imDone = 1;
+    else {
+      if(isDone()) {
+        imDone = 1;
+      if(DBG) printf("CONSUMER %ld - I'M DONE!\n", pthread_self());
+      } else {
+      if(DBG) printf("CONSUMER %ld - SLEEP: %d\n", pthread_self(), sleepCons);
+        usleep(sleepCons);
+      }
+    }
   }
   if(DBG) printf("CONSUMER %ld - END\n", pthread_self());
   pthread_exit(NULL);
@@ -172,6 +185,7 @@ void *consumer(void *consumer_thread_data) {
 void setDone() {
   pthread_mutex_lock(&lockDone);
   done = 1;
+  printf("DONE!\n");
   pthread_mutex_unlock(&lockDone);
 }
 
@@ -184,24 +198,26 @@ int isDone() {
 /******************************************************************************
  * Queue methods
  ***/
- // Returns success -- failure (1) means you must wait and try again
+ // Returns success -- failure (0) means you must wait and try again
 int enqueue(char ch) {
   my_rwlock_rlock(&lockProduce);
   my_rwlock_rlock(&lockConsume);
+  if(DBG) printQueueState("ENQ");
   if( (idxProduce+1) % queueSize == idxConsume ) {
     // Enqueueing right now would over-write data that has NOT been consumed yet
     my_rwlock_unlock(&lockConsume);
     my_rwlock_unlock(&lockProduce);
-    return 1;
+    return 0;
   }
   my_rwlock_unlock(&lockConsume);
   my_rwlock_unlock(&lockProduce);
 
   my_rwlock_wlock(&lockProduce);
-  idxProduce = (idxProduce+1) % queueSize;
   circQueue[idxProduce] = ch;
+  if(DBG) printf("[%d] ENQ > '%c'\n", idxProduce, ch);
+  idxProduce = (idxProduce+1) % queueSize;
   my_rwlock_unlock(&lockProduce);
-  return 0;
+  return 1;
 }
 
 // Returns a character from the queue; if '\n' the queue was empty, try again later
@@ -209,7 +225,7 @@ char dequeue() {
   char ch = '\n';
   my_rwlock_rlock(&lockConsume);
   my_rwlock_rlock(&lockProduce);
-  if( (idxConsume+1) % queueSize == idxProduce ) {
+  if( (idxConsume+1) % queueSize == (idxProduce+1) ) {
     // Queue is empty!
     my_rwlock_unlock(&lockProduce);
     my_rwlock_unlock(&lockConsume);
@@ -221,8 +237,36 @@ char dequeue() {
   my_rwlock_wlock(&lockConsume);
   idxConsume = (idxConsume+1) % queueSize;
   ch = circQueue[idxConsume];
+  if(DBG) printf("[%d] DEQ < '%c'\n", idxConsume, ch);
+  if(DBG) printQueueState();
   my_rwlock_unlock(&lockConsume);
   return ch;
+}
+
+void printQueueState() {
+  int i;
+
+  my_rwlock_rlock(&lockProduce);
+  my_rwlock_rlock(&lockConsume);
+
+  printf(" [%s]\n", circQueue);
+  for(i=0;i<idxProduce;i++) {
+    if(i == idxConsume)
+      printf("|");
+    else
+      printf(" ");
+  }
+  printf("  `--idxProduce\n");
+  if(idxConsume < 0){
+    printf("x");
+  } else {
+    for(i=0;i<idxConsume;i++) { printf(" "); }
+    printf(" `");
+  }
+  printf("--idxConsume\n");
+
+  my_rwlock_unlock(&lockConsume);
+  my_rwlock_unlock(&lockProduce);
 }
 
 /******************************************************************************
@@ -242,13 +286,13 @@ void my_rwlock_rlock(my_rwlock_t *l) {
    * If there's a write lock or pending writers, wait
    * Else increment the count of readers and grant read lock
    */
-   if(DBG) printf("R_LCK - START\n");
+   if(DBG2) printf("[");
    pthread_mutex_lock(&(l->read_write_lock));
    while((l->pending_writers > 0) || (l->writer > 0))
       pthread_cond_wait(&(l->readers_proceed), &(l->read_write_lock));
    l->readers++;     // I'm also reading now
    pthread_mutex_unlock(&(l->read_write_lock));
-   if(DBG) printf("R_LCK - END\n");
+   if(DBG2) printf("]");
 }
 
 void my_rwlock_wlock(my_rwlock_t *l) {
@@ -257,7 +301,7 @@ void my_rwlock_wlock(my_rwlock_t *l) {
     *
     * Once woken, decrement pending writers count and increment writer count
     */
-   if(DBG) printf("W_LCK - START\n");
+   if(DBG2) printf("(");
    pthread_mutex_lock(&(l->read_write_lock));
    while((l->writer > 0) || (l->readers > 0)) {
       l->pending_writers++;
@@ -266,7 +310,7 @@ void my_rwlock_wlock(my_rwlock_t *l) {
    l->pending_writers--;
    l->writer++;
    pthread_mutex_unlock(&(l->read_write_lock));
-   if(DBG) printf("W_LCK - START\n");
+   if(DBG2) printf(")");
 }
 
 void my_rwlock_unlock(my_rwlock_t *l) {
@@ -277,7 +321,7 @@ void my_rwlock_unlock(my_rwlock_t *l) {
     * If the count is 0 and a pending writer, let it go through
     * Else if pending readers, let them all go through
     */
-   if(DBG) printf("UNLCK - START\n");
+   if(DBG2) printf("<");
    pthread_mutex_lock(&(l->read_write_lock));
    if(l->writer > 0)
       l->writer = 0;
@@ -288,7 +332,7 @@ void my_rwlock_unlock(my_rwlock_t *l) {
       pthread_cond_signal(&(l->writer_proceed));
    else if(l->readers > 0)
       pthread_cond_broadcast(&(l->readers_proceed));
-   if(DBG) printf("UNLCK - START\n");
+   if(DBG2) printf(">");
 }
 /***
  * End Read-Write Lock base functions

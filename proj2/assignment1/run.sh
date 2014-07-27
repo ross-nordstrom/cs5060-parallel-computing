@@ -1,1 +1,1 @@
-./pc_lock.o 10 3
+./pc_lock.o 10 1
