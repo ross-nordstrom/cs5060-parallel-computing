@@ -197,7 +197,7 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
    int state = 0, i, j, size = 0, tmp;
    int **matrixA, **matrixB, **matrixC;
    FILE *fr;
-   char line[120];
+   char *line;
    char *tok;
 
    fr = fopen("data.txt", "rt");
@@ -211,6 +211,9 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
       } else if(state == 0) {
          // Reading first line, containing the Size
          size = atoi(line);
+
+         // Initialize the line string, assuming worst case 6-char per specified matrix cell
+         line = malloc(size*6*sizeof(char));
 
          // Initialize the matrices
          initMatrix(&matrixA, size);

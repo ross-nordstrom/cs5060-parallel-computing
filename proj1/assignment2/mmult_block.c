@@ -329,12 +329,11 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
    int state = 0, i, j, size = 0, tmp;
    int **matrixA, **matrixB, **matrixC;
    FILE *fr;
-   char line[120];
+   char *line;
    char *tok;
 
    fr = fopen("data.txt", "rt");
    while(fgets(line, 120, fr) != NULL) {
-
       if(line[0] == '\0' || line[0] == '\n' || line[0] == '\r' || line[0] == '\t' || line[0] == ' ') {
          // Empty line separating the inputs (size/matrixA/matrixB)
          // IMPORTANT! This marks a state transition
@@ -343,6 +342,9 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
       } else if(state == 0) {
          // Reading first line, containing the Size
          size = atoi(line);
+
+         // Initialize the line string, assuming worst case 6-char per specified matrix cell
+         line = malloc(size*6*sizeof(char));
 
          // Initialize the matrices
          initMatrix(&matrixA, size);
