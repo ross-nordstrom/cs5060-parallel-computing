@@ -2,9 +2,9 @@
  * Producer - Consumer problem implemented for 1 producer and multiple consumers
  *
  ***/
-#include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #define DBG    0
@@ -53,9 +53,13 @@ struct my_rwlock_t lockProduce, lockConsume;
 
 int main (int argc, char* argv[])
 {
+  int i, rc;
+  pthread_t *threads;
+
   if(argc != 3) {
     printf("PROGRAM - No args given\n");
     printf("Usage:\t%s QueueSize NumConsumers\n", argv[0]);
+    exit(1);
   }
   printf("PROGRAM - START\n");
 
@@ -73,15 +77,27 @@ int main (int argc, char* argv[])
   /**
   * Create producer and consumer threads
   */
-  // TODO
+  threads = malloc( (numConsumers) * sizeof(pthread_t) );
+  // Producer thread
+  if(rc = pthread_create(&threads[0], NULL, producer, NULL))
+    printf("Error creating producer thread\n");
 
+  // Create a thread per consumer
+  for(i=0; i < numConsumers; i++) {
+    if(rc = pthread_create(&threads[i+1], NULL, consumer, NULL))
+      printf("Error creating consumer thread %d\n", i);
+  } // create each consumer
+
+  // They're doing there thing, hold on...
 
   /**
   * Join producer and consumer threads
   */
-  // TODO
+  for(i=0; i < (numConsumers+1); i++) {
+    pthread_join(threads[i], NULL);
+  } // join each thread
 
-  printf("PROGRAM - END\n");
+  printf("\nPROGRAM - END\n");
 }
 
 /******************************************************************************
@@ -113,6 +129,7 @@ void *producer(void *producer_thread_data) {
 
   setProducerDone();
   printf("PRODUCER - END\n");
+  pthread_exit(NULL);
 }
 
 /******************************************************************************
@@ -134,6 +151,7 @@ void *consumer(void *consumer_thread_data) {
       printf("%c",ch);
   }
   printf("CONSUMER %ld - END\n", pthread_self());
+  pthread_exit(NULL);
 }
 
 /******************************************************************************
