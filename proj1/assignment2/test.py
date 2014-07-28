@@ -86,7 +86,7 @@ out, err = p.communicate()
 
 print " "
 print "Test random inputs..."
-inputSets = [[4,4],[4,6],[4,8],[4,24],[9,9],[9,18],[9,27],[16,16],[16,32],[25,25],[25,50]]
+inputSets = [[4,4],[4,6],[4,8],[4,24],[9,9],[9,18],[9,27],[16,16],[16,32]] #,[25,25],[25,50]]
 for proc,n in inputSets:
    # n = proc*proc
    # print "Test with {} processors".format(proc)
@@ -112,7 +112,7 @@ for proc,n in inputSets:
       fo.write( " ".join(map(str,row)) +"\n" )
    fo.close()
 
-   for scheme in ['stripe','block']:
+   for scheme in ['block']: #['stripe','block']:
       script = "./mmult_"+scheme+".o"
       if Util.testmmult(proc,c,script):
          print "Tested with P:{}, N: {}\t\033[91m{}\033[0m  [{}]\t{}".format(proc, n, 'X', errorCnt, scheme)
