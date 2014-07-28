@@ -126,8 +126,8 @@ int main (int argc, char* argv[])
         myMatrixC[(j+rank) % numtasks] += myMatrixA[k] * myMatrixB[k];
       }
 
-      MPI_Isend(myMatrixB, size, MPI_INT, rank, 0, MPI_COMM_WORLD, &request);
-      MPI_Recv(tempMatrix, size, MPI_INT, rank, 0, MPI_COMM_WORLD, &status);
+      MPI_Isend(myMatrixB, size, MPI_INT, (rank-1) % numtasks, 0, MPI_COMM_WORLD, &request);
+      MPI_Recv(tempMatrix, size, MPI_INT, (rank+1) % numtasks, 0, MPI_COMM_WORLD, &status);
       MPI_Barrier(MPI_COMM_WORLD);
       myMatrixB = tempMatrix;
     } // for(j)
@@ -197,7 +197,7 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
    int state = 0, i, j, size = 0, tmp;
    int **matrixA, **matrixB, **matrixC;
    FILE *fr;
-   char line[120];
+   char *line;
    char *tok;
 
    fr = fopen("data.txt", "rt");
@@ -211,6 +211,9 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
       } else if(state == 0) {
          // Reading first line, containing the Size
          size = atoi(line);
+
+         // Initialize the line string, assuming worst case 6-char per specified matrix cell
+         line = malloc(size*6*sizeof(char));
 
          // Initialize the matrices
          initMatrix(&matrixA, size);
