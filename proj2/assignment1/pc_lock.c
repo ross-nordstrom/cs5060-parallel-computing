@@ -40,20 +40,21 @@ void setDone();
 int isDone();
 int enqueue(char ch);
 char dequeue();
-void printQueueState();
+void printQueue();
 
 /******************************************************************************
  * Shared variables and Main function
  ***/
-int idxProduce=-1;   // Point to the last index we put data into the queue
-int idxConsume=-1;  // Point to the last index we took data from the queue
+int idxProduce=0;   // Point to the next destination
+int idxConsume=0;   // Point to the next destination
+int itemsInQueue=0;
 int queueSize, numConsumers, done;
 int sleepProd = 1000*10, sleepCons = 2000*10;
 char *circQueue;
 
 // Locks
-struct my_rwlock_t lockProduce, lockConsume;
-pthread_mutex_t lockDone;
+struct my_rwlock_t lockQueue;
+pthread_mutex_t lockDone, lockQueueSize;
 
 int main (int argc, char* argv[])
 {
@@ -76,8 +77,7 @@ int main (int argc, char* argv[])
   idxConsume = queueSize-1;
   done = 0;
   if(DBG) printf("PARAMS - Queue Size: %d, Consumers: %d\n", queueSize, numConsumers);
-  my_rwlock_init(&lockProduce);
-  my_rwlock_init(&lockConsume);
+  my_rwlock_init(&lockQueue);
 
   /**
   * Create producer and consumer threads
@@ -101,7 +101,9 @@ int main (int argc, char* argv[])
   * Join producer and consumer threads
   */
   for(i=0; i < (numConsumers+1); i++) {
+    printf("MAIN - wait to join thread %d\n", i);
     pthread_join(threads[i], NULL);
+    printf("MAIN - joined thread %d\n", i);
   } // join each thread
 
   if(DBG) printf("\nPROGRAM - END\n");
@@ -127,18 +129,19 @@ void *producer(void *producer_thread_data) {
   if(DBG) printf("PRODUCER - START\n");
   fr = fopen("string.txt", "rt");
   while(fgets(line, maxStrSize, fr) != NULL) {
-    ttl = 20;
+    ttl = 10; // It will only loop in place TTL times
     if(DBG) printf("PRODUCER - LINE = '%s'\n", line);
-    for(i = 0; i < strlen(line) && line[i] != '\n'; ttl--) {
+    for(i = 0; i < strlen(line) && line[i] != '\n' && ttl > 0; ttl--) {
+      if(DBG) printf("PRODUCER - Get write lock\n");
+      my_rwlock_wlock(&lockQueue);
+      if(DBG) printf("PRODUCER - Have write lock\n");
       if(enqueue(line[i])) {
         if(DBG) printf("PRODUCER - ENQ '%c'\n", line[i]);
         i++;
         ttl = 20;
-      } else {
-        if(DBG) printf("PRODUCER - SLEEP: %d\n", sleepProd);
-        usleep(sleepProd);
-        if(DBG) printf("PRODUCER - WAKE\n");
       }
+      if(DBG) printf("PRODUCER - Release write lock\n");
+      my_rwlock_unlock(&lockQueue);
     } // each char in line
   } // each line in file
 
@@ -162,6 +165,9 @@ void *consumer(void *consumer_thread_data) {
    */
   if(DBG) printf("CONSUMER %ld - START\n", pthread_self());
   while(!imDone) {
+    if(DBG) printf("CONSUMER %ld - Get read lock\n", pthread_self());
+    my_rwlock_rlock(&lockQueue);
+    if(DBG) printf("CONSUMER %ld - Have read lock\n", pthread_self());
     ch = dequeue();
     if(ch != '\n'){
       if(DBG) {
@@ -177,12 +183,10 @@ void *consumer(void *consumer_thread_data) {
       if(isDone()) {
         imDone = 1;
         if(DBG) printf("CONSUMER %ld - I'M DONE!\n", pthread_self());
-      } else {
-        if(DBG) printf("CONSUMER %ld - SLEEP: %d\n", pthread_self(), sleepCons);
-        usleep(sleepCons);
-        if(DBG) printf("CONSUMER %ld - WAKE\n", pthread_self());
       }
     }
+    if(DBG) printf("CONSUMER %ld - Release read lock\n", pthread_self());
+    my_rwlock_unlock(&lockQueue);
   }
   if(DBG) printf("CONSUMER %ld - END\n", pthread_self());
   pthread_exit(NULL);
@@ -209,75 +213,38 @@ int isDone() {
  ***/
  // Returns success -- failure (0) means you must wait and try again
 int enqueue(char ch) {
-  my_rwlock_rlock(&lockProduce);
-  my_rwlock_rlock(&lockConsume);
-  int nextIdxProduce = (idxProduce+1) % queueSize;
-  // if(DBG) printQueueState("ENQ");
-  if( nextIdxProduce == idxConsume ) {
-    // Enqueueing right now would over-write data that has NOT been consumed yet
-    my_rwlock_unlock(&lockConsume);
-    my_rwlock_unlock(&lockProduce);
-    return 0;
+  int success = 0;
+  if( itemsInQueue != queueSize ) {
+    circQueue[idxProduce] = ch;
+    if(DBG) printf("[%d] ENQ > '%c'\n", idxProduce, ch);
+    idxProduce = (idxProduce+1) % queueSize;
+  pthread_mutex_lock(&lockQueueSize);
+    itemsInQueue++;
+  pthread_mutex_unlock(&lockQueueSize);
+    success = 1;
   }
-  my_rwlock_unlock(&lockConsume);
-  my_rwlock_unlock(&lockProduce);
-
-  my_rwlock_wlock(&lockProduce);
-  circQueue[nextIdxProduce] = ch;
-  if(DBG) printf("[%d] ENQ > '%c'\n", nextIdxProduce, ch);
-  idxProduce = nextIdxProduce;
-  my_rwlock_unlock(&lockProduce);
-  return 1;
+  return success;
 }
 
 // Returns a character from the queue; if '\n' the queue was empty, try again later
 char dequeue() {
   char ch = '\n';
-  my_rwlock_rlock(&lockConsume);
-  my_rwlock_rlock(&lockProduce);
-  int nextIdxConsume = (idxConsume+1) % queueSize;
-  if( nextIdxConsume == (idxProduce+1) % queueSize ) {
-    // Queue is empty!
-    my_rwlock_unlock(&lockProduce);
-    my_rwlock_unlock(&lockConsume);
-    return ch;
+  if(itemsInQueue != 0) {
+    ch = circQueue[idxConsume];
+    if(DBG) printf("[%d] DEQ < '%c'\n", idxConsume, ch);
+    idxConsume = (idxConsume+1) % queueSize;
+  pthread_mutex_lock(&lockQueueSize);
+    itemsInQueue--;
+  pthread_mutex_unlock(&lockQueueSize);
   }
-  my_rwlock_unlock(&lockProduce);
-  my_rwlock_unlock(&lockConsume);
-
-  my_rwlock_wlock(&lockConsume);
-  ch = circQueue[nextIdxConsume];
-  if(DBG) printf("[%d] DEQ < '%c'\n", nextIdxConsume, ch);
-  // if(DBG) printQueueState();
-  idxConsume = nextIdxConsume;
-  my_rwlock_unlock(&lockConsume);
   return ch;
 }
 
-void printQueueState() {
+void printQueue() {
   int i;
-
-  my_rwlock_rlock(&lockProduce);
-  my_rwlock_rlock(&lockConsume);
-
-  printf(" [%-10s]\t\t(%d,%d)\n  ", circQueue, idxProduce, idxConsume);
-  for(i=0;i<idxProduce;i++) {
-    if(i == idxConsume)
-      printf("|");
-    else
-      printf(" ");
-  }
-  printf("'--P\n  ");
-  if(idxConsume < 0){
-    printf("x");
-  } else {
-    for(i=0;i<idxConsume;i++) { printf(" "); }
-    printf("'");
-  }
-  printf("--C\n");
-
-  my_rwlock_unlock(&lockConsume);
-  my_rwlock_unlock(&lockProduce);
+  my_rwlock_rlock(&lockQueue);
+  printf(" [%-10s]\n  ", circQueue);
+  my_rwlock_unlock(&lockQueue);
 }
 
 /******************************************************************************
