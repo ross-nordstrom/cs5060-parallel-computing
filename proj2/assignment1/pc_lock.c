@@ -38,23 +38,23 @@ void setProducerDone();
 int isProducerDone();
 void setDone();
 int isDone();
-int enqueue(char ch);
+void enqueue(char ch);
 char dequeue();
 void printQueue();
 
 /******************************************************************************
  * Shared variables and Main function
  ***/
+char *circQueue;
 int idxProduce=0;   // Point to the next destination
 int idxConsume=0;   // Point to the next destination
 int itemsInQueue=0;
 int queueSize, numConsumers, done;
 int sleepProd = 1000*10, sleepCons = 2000*10;
-char *circQueue;
 
 // Locks
 struct my_rwlock_t lockQueue;
-pthread_mutex_t lockDone, lockQueueSize;
+pthread_mutex_t lockDone, lockConsumeIdx;
 
 int main (int argc, char* argv[])
 {
@@ -75,6 +75,8 @@ int main (int argc, char* argv[])
   numConsumers = (int) atoi(argv[2]);
   circQueue = malloc(queueSize*sizeof(char));
   idxConsume = queueSize-1;
+  pthread_mutex_init(&lockConsumeIdx, NULL);
+  pthread_mutex_init(&lockDone, NULL);
   done = 0;
   if(DBG) printf("PARAMS - Queue Size: %d, Consumers: %d\n", queueSize, numConsumers);
   my_rwlock_init(&lockQueue);
@@ -114,7 +116,7 @@ int main (int argc, char* argv[])
  *
  * Based on CS5060/Rao > Lec 6 > Slide 21
  ***/
-void *producer(void *producer_thread_data) {
+void * producer(void *producer_thread_data) {
   int i, ttl;
   int maxStrSize = 1024*1024;  // Arbitrary max
   FILE *fr;
@@ -126,27 +128,40 @@ void *producer(void *producer_thread_data) {
    * Read each character from "string.txt", one-by-one
    * Sequentially write each character into the shared circular queue
    */
-  if(DBG) printf("PRODUCER - START\n");
+  if(DBG) printf("[%ld] PRODUCER - START\n", pthread_self());
   fr = fopen("string.txt", "rt");
   while(fgets(line, maxStrSize, fr) != NULL) {
     ttl = 10; // It will only loop in place TTL times
-    if(DBG) printf("PRODUCER - LINE = '%s'\n", line);
+    if(DBG) printf("[%ld] PRODUCER - LINE = '%s'\n", pthread_self(), line);
+
     for(i = 0; i < strlen(line) && line[i] != '\n' && ttl > 0; ttl--) {
-      if(DBG) printf("PRODUCER - Get write lock\n");
+
+      if(DBG) printf("[%ld] PRODUCER - Q > Get write lock\n", pthread_self());
       my_rwlock_wlock(&lockQueue);
-      if(DBG) printf("PRODUCER - Have write lock\n");
-      if(enqueue(line[i])) {
-        if(DBG) printf("PRODUCER - ENQ '%c'\n", line[i]);
+      if(DBG) printf("[%ld] PRODUCER - Q > Have write lock\n", pthread_self());
+
+      if(itemsInQueue < queueSize) {
+        enqueue(line[i]);
+
+        // Decrement count
+        itemsInQueue++;
+
+        if(DBG) printf("[%ld] PRODUCER - ENQ '%c'\n", pthread_self(), line[i]);
         i++;
         ttl = 20;
+      } else {
+        // Queue is full
+        // usleep(sleepProd);
       }
-      if(DBG) printf("PRODUCER - Release write lock\n");
+      if(DBG) printf("[%ld] PRODUCER - Q > Release r/w lock\n", pthread_self());
       my_rwlock_unlock(&lockQueue);
+      if(DBG) printf("[%ld] PRODUCER - Q > Released r/w lock\n", pthread_self());
+      usleep(sleepProd);
     } // each char in line
   } // each line in file
 
   setDone();
-  if(DBG) printf("PRODUCER - END\n");
+  if(DBG) printf("[%ld] PRODUCER- END\n", pthread_self());
   pthread_exit(NULL);
 }
 
@@ -155,7 +170,7 @@ void *producer(void *producer_thread_data) {
  *
  * Based on CS5060/Rao > Lec 6 > Slide 21
  ***/
-void *consumer(void *consumer_thread_data) {
+void * consumer(void *consumer_thread_data) {
   int imDone = 0;
   char ch;
   /**
@@ -163,32 +178,49 @@ void *consumer(void *consumer_thread_data) {
    *
    * Read and print a character from the shared circular queue
    */
-  if(DBG) printf("CONSUMER %ld - START\n", pthread_self());
+  if(DBG) printf("[%ld] CONSUMER - START\n", pthread_self());
   while(!imDone) {
-    if(DBG) printf("CONSUMER %ld - Get read lock\n", pthread_self());
+    if(DBG) printf("[%ld] CONSUMER - Q > Get read lock\n", pthread_self());
     my_rwlock_rlock(&lockQueue);
-    if(DBG) printf("CONSUMER %ld - Have read lock\n", pthread_self());
-    ch = dequeue();
-    if(ch != '\n'){
+    if(DBG) printf("[%ld] CONSUMER - Q > Have read lock\n", pthread_self());
+
+    if(itemsInQueue > 0) {
+      if(DBG) printf("[%ld] CONSUMER - I > Get mutex\n", pthread_self());
+      pthread_mutex_lock(&lockConsumeIdx);
+      if(DBG) printf("[%ld] CONSUMER - I > Have mutex\n", pthread_self());
+      ch = dequeue();
+      if(DBG) printf("[%ld] CONSUMER - I > Release mutex\n", pthread_self());
+      pthread_mutex_unlock(&lockConsumeIdx);
+
+      if(DBG) printf("[%ld] CONSUMER - Q > Switch read to write lock\n", pthread_self());
+      my_rwlock_unlock(&lockQueue);
+      // Decrement count
+      my_rwlock_wlock(&lockQueue);
+      if(DBG) printf("[%ld] CONSUMER - Q > Have write lock\n", pthread_self());
+      itemsInQueue--;
+
       if(DBG) {
-        printf("CONSUMER %ld - DEQ '%c'\n", pthread_self(), ch);
+        printf("[%ld] CONSUMER - DEQ '%c'\n", pthread_self(), ch);
         printf("\t\t\t>>>>>>>>>>>>>>> '%c'\n", ch);
       } else {
         printf("%c", ch);
       }
-    }
-    // If we've caught up to the producer, and the producer is done,
-    //    then I'M DONE!
-    else {
+    } else {
+      if(DBG) printf("[%ld] CONSUMER - Nothing in queue. Done?\n", pthread_self());
+      // Nothing in the queue. If the producer is done, then so are we!
       if(isDone()) {
         imDone = 1;
-        if(DBG) printf("CONSUMER %ld - I'M DONE!\n", pthread_self());
+        if(DBG) printf("[%ld] CONSUMER - I'M DONE!\n", pthread_self());
       }
+      if(DBG) printf("[%ld] CONSUMER - Not done.\n", pthread_self());
     }
-    if(DBG) printf("CONSUMER %ld - Release read lock\n", pthread_self());
+    if(DBG) printf("[%ld] CONSUMER - Q > Release r/w lock\n", pthread_self());
     my_rwlock_unlock(&lockQueue);
+    if(DBG) printf("[%ld] CONSUMER - Q > Released r/w lock\n", pthread_self());
+    usleep(sleepCons);
   }
-  if(DBG) printf("CONSUMER %ld - END\n", pthread_self());
+
+  if(DBG) printf("[%ld] CONSUMER - END\n", pthread_self());
   pthread_exit(NULL);
 }
 
@@ -203,40 +235,31 @@ void setDone() {
 }
 
 int isDone() {
+  int localDone;
   pthread_mutex_lock(&lockDone);
-  return done;
+  localDone = done;
   pthread_mutex_unlock(&lockDone);
+  return localDone;
 }
 
 /******************************************************************************
  * Queue methods
  ***/
  // Returns success -- failure (0) means you must wait and try again
-int enqueue(char ch) {
-  int success = 0;
-  if( itemsInQueue != queueSize ) {
-    circQueue[idxProduce] = ch;
-    if(DBG) printf("[%d] ENQ > '%c'\n", idxProduce, ch);
-    idxProduce = (idxProduce+1) % queueSize;
-  pthread_mutex_lock(&lockQueueSize);
-    itemsInQueue++;
-  pthread_mutex_unlock(&lockQueueSize);
-    success = 1;
-  }
-  return success;
+void enqueue(char ch) {
+  circQueue[idxProduce] = ch;
+  if(DBG) printf("[%d] ENQ > '%c'\n", idxProduce, ch);
+  idxProduce = (idxProduce+1) % queueSize;
+  itemsInQueue++;
+  return;
 }
 
 // Returns a character from the queue; if '\n' the queue was empty, try again later
 char dequeue() {
-  char ch = '\n';
-  if(itemsInQueue != 0) {
-    ch = circQueue[idxConsume];
-    if(DBG) printf("[%d] DEQ < '%c'\n", idxConsume, ch);
-    idxConsume = (idxConsume+1) % queueSize;
-  pthread_mutex_lock(&lockQueueSize);
-    itemsInQueue--;
-  pthread_mutex_unlock(&lockQueueSize);
-  }
+  char ch;
+  ch = circQueue[idxConsume];
+  if(DBG) printf("[%d] DEQ < '%c'\n", idxConsume, ch);
+  idxConsume = (idxConsume+1) % queueSize;
   return ch;
 }
 
