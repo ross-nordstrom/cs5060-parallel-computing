@@ -292,6 +292,7 @@ void my_rwlock_rlock(my_rwlock_t *l) {
    while((l->pending_writers > 0) || (l->writer > 0))
       pthread_cond_wait(&(l->readers_proceed), &(l->read_write_lock));
    l->readers++;     // I'm also reading now
+   printf("CUR READERS: %d\n", l->readers);
    pthread_mutex_unlock(&(l->read_write_lock));
    if(DBG2) printf("]");
 }
@@ -315,25 +316,38 @@ void my_rwlock_wlock(my_rwlock_t *l) {
 }
 
 void my_rwlock_unlock(my_rwlock_t *l) {
-   /**
-    * If there's a write lock, then unlock
-    * Else if there are read locks, decrement the read count
-    *
-    * If the count is 0 and a pending writer, let it go through
-    * Else if pending readers, let them all go through
-    */
-   if(DBG2) printf("<");
-   pthread_mutex_lock(&(l->read_write_lock));
-   if(l->writer > 0)
-      l->writer = 0;
-   else if(l->readers > 0)
-      l->readers--;
-   pthread_mutex_unlock(&(l->read_write_lock));
-   if((l->readers == 0) && (l->pending_writers > 0))
-      pthread_cond_signal(&(l->writer_proceed));
-   else if(l->readers > 0)
-      pthread_cond_broadcast(&(l->readers_proceed));
-   if(DBG2) printf(">");
+  /**
+   * If there's a write lock, then unlock
+   * Else if there are read locks, decrement the read count
+   *
+   * If the count is 0 and a pending writer, let it go through
+   *
+   * *** Modification to optimize for this problem:
+   * (ORIGINAL) Else if pending readers, let them all go through
+   * (MODIFIED) Else if pending readers > available items
+   */
+  pthread_mutex_lock(&(l->read_write_lock));
+  if(l->writer > 0)
+  {
+     l->writer = 0;
+  }
+  else if(l->readers > 0)
+  {
+     l->readers--;
+  }
+  pthread_mutex_unlock(&(l->read_write_lock));
+  if((l->readers == 0) && (l->pending_writers > 0))
+  {
+    pthread_cond_signal(&(l->writer_proceed));
+  }
+  // ORIGINAL
+  // else if(l->readers > 0)
+  // MODIFIED
+  else if(l->readers > 0 && l->readers >= itemsInQueue )
+  {
+    printf("UNLOCK... Readers: %d, items: %d, larger? '%d'\n", l->readers, itemsInQueue, l->readers >= itemsInQueue);
+    pthread_cond_broadcast(&(l->readers_proceed));
+  }
 }
 /***
  * End Read-Write Lock base functions
