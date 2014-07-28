@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#define DBG    1
+#define DBG    0
 #define DBG2   0
 
 /******************************************************************************
@@ -225,7 +225,7 @@ void * consumer(void *consumer_thread_data) {
 void setDone() {
   pthread_mutex_lock(&lockDone);
   done = 1;
-  printf("DONE!\n");
+  printf(" [DONE!]\n");
   pthread_mutex_unlock(&lockDone);
 }
 
@@ -301,7 +301,7 @@ void my_rwlock_rlock(my_rwlock_t *l) {
     l->pending_readers--;
   }
   l->readers++;     // I'm also reading now
-  printf("CUR READERS: %d\n", l->readers);
+  if(DBG) printf("CUR READERS: %d\n", l->readers);
   pthread_mutex_unlock(&(l->read_write_lock));
 }
 
@@ -355,7 +355,7 @@ void my_rwlock_unlock(my_rwlock_t *l) {
     l->readers--;
     l->auditReads++;
   }
-  printf("\t\t\t\t\t\t\tAUDIT ==> Cnt: %d, Writes: %d, Reads: %d\n", l->queueCount, l->auditWrites, l->auditReads);
+  if(DBG) printf("\t\t\t\t\t\t\tAUDIT ==> Cnt: %d, Writes: %d, Reads: %d\n", l->queueCount, l->auditWrites, l->auditReads);
   roomToWrite = room_to_write(l);
   roomToRead = room_to_read(l);
   letWritersGo = (l->readers == 0) && (l->pending_writers > 0 && roomToWrite);
@@ -385,7 +385,7 @@ void my_rwlock_unlock(my_rwlock_t *l) {
 }
 
 int room_to_write(my_rwlock_t *l) {
-  printf("Room to write? (cnt=%d, cap=%d)  ", l->queueCount, l->queueCapacity);
+  if(DBG) printf("Room to write? (cnt=%d, cap=%d)  ", l->queueCount, l->queueCapacity);
   if(l->queueCount < l->queueCapacity) {
     if(DBG) printf("Yes\n");
     return 1;
@@ -395,7 +395,7 @@ int room_to_write(my_rwlock_t *l) {
   }
 }
 int room_to_read(my_rwlock_t *l) {
-  printf("Room to read? (cnt=%d, cap=%d, readers=%d, pending_readers=%d)  ", l->queueCount, l->queueCapacity, l->readers, l->pending_readers);
+  if(DBG) printf("Room to read? (cnt=%d, cap=%d, readers=%d, pending_readers=%d)  ", l->queueCount, l->queueCapacity, l->readers, l->pending_readers);
   if(l->queueCount >= (l->readers + l->pending_readers) && (l->readers + l->pending_readers) <= l->queueCount) {
     if(DBG) printf("Yes\n");
     return 1;
