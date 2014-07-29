@@ -22,7 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
-#define DBG    1
+#define DBG    0
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -171,6 +171,7 @@ int main (int argc, char* argv[])
       /**
        * Calculate this C element, receiving data as needed from neighbors
        */
+      myMatrixC[i][j]=0;
       for(k=0; k<numtasks; k++) { // each process
         if(DBG) printf("[%d] (%d,%d) Nbr:%d, VertNbrRank:%d\n",rank,i,j,k,k);
         // Receive this process's B column
@@ -187,8 +188,8 @@ int main (int argc, char* argv[])
         if(DBG) printf("[%d] (%d,%d)/%d myA in this range: [%d,%d]\n",rank,i,j,k,myMatrixA[i][k*myN],myMatrixA[i][k*myN+1]);
         for(l=0; l<myN; l++) {
           tmp = myMatrixA[i][l+k*myN]*workingB[l];
-          if(DBG) printf("[%d]            tmp = %d\n", rank, tmp);
           myMatrixC[i][j] += tmp;
+          if(DBG) printf("[%d]                myMatrixC[%d,%d] = %d\n", rank, i,j,myMatrixC[i][j]);
         }
         if(DBG) printf("[%d] (%d,%d) Calculated: myMatrixC[*][%d] = [%d,%d]\n",rank,i,j,j,myMatrixC[0][j],myMatrixC[1][j]);
 
