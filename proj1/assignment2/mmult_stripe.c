@@ -79,33 +79,47 @@ int main (int argc, char* argv[])
     }
 
     if(DBG) printf("Proc #%d sending data of size %dx%d to %d processes...\n", rank, size, myN, numtasks-1);
-    for(i=(size/numtasks); i<size; i++) {
+    for(i=myN; i<size; i++) {
+      sendRank = i / myN;
+      sendTag = i % myN;
       // Master process must send asynchronously
-      sendRank = i / (size/numtasks);
-      sendTag = i % (size/numtasks);
+      if(DBG) printf("[%d] Send row %d to %d with tag %d\n", rank, i, sendRank, sendTag);
       MPI_Isend(matrixA[i], size, MPI_INT, sendRank, sendTag, MPI_COMM_WORLD, &request);
       MPI_Isend(matrixB[i], size, MPI_INT, sendRank, sendTag, MPI_COMM_WORLD, &request);
-      }
+    } 
 
-      if(DBG) printf("All Sent.\n");
-      
-      for(i=0; i<(size/numtasks); i++){
-        myMatrixA[i] = matrixA[i]; //(int *) malloc(sizeof(int) * size);
-        myMatrixB[i] = matrixB[i]; //(int *) malloc(sizeof(int) * size);
-        myMatrixC[i] = (int *) malloc(sizeof(int) * size);
-      }
-  } else {
-    if(DBG) printf("Proc #%d waiting for size from master...\n", rank);
-    MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-    myN = size/numtasks;
+    if(DBG) printf("All Sent.\n");
 
-    if(DBG) printf("Proc #%d waiting for %d rows of width %d from master...\n", rank, myN, size);
     for(i=0; i<myN; i++){
       // initialize this row
+      if(DBG) printf("[%d] Malloc my row %d\n", rank, i);
       myMatrixA[i] = (int *) malloc(sizeof(int) * size);
       myMatrixB[i] = (int *) malloc(sizeof(int) * size);
       myMatrixC[i] = (int *) malloc(sizeof(int) * size);
 
+      if(DBG) printf("[%d] Initialize my row %d\n", rank, i);
+      for(j=0; j<size; j++) {
+        myMatrixA[i][j] = matrixA[i][j]; //(int *) malloc(sizeof(int) * size);
+        myMatrixB[i][j] = matrixB[i][j]; //(int *) malloc(sizeof(int) * size);
+      }
+    }
+  } else {
+    if(DBG) printf("Proc #%d waiting for size from master...\n", rank);
+    MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+    myN = size/numtasks;
+    if(DBG) printf("Proc #%d got data from master: size=%d, myN=%d\n", rank, size, myN);
+      myMatrixA = (int **) malloc(sizeof(int *) * size);
+      myMatrixB = (int **) malloc(sizeof(int *) * size);
+      myMatrixC = (int **) malloc(sizeof(int *) * size);
+    if(DBG) printf("Proc #%d waiting for %d rows of width %d from master...\n", rank, myN, size);
+    for(i=0; i<myN; i++){
+      // initialize this row
+      if(DBG) printf("[%d] Malloc my row %d\n", rank, i);
+      myMatrixA[i] = (int *) malloc(sizeof(int) * size);
+      myMatrixB[i] = (int *) malloc(sizeof(int) * size);
+      myMatrixC[i] = (int *) malloc(sizeof(int) * size);
+
+      if(DBG) printf("[%d] Recv row %d...\n", rank, i);
       MPI_Recv(myMatrixA[i], size, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
       MPI_Recv(myMatrixB[i], size, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
       if(DBG) printf("Proc #%d got row %d\n", rank, i);
@@ -221,10 +235,8 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
    char *line = malloc(size*6*sizeof(char));
    char *tok;
 
-   if(DBG) printf("OPEN FILE\n");
    fr = fopen("data.txt", "rt");
    while(fgets(line, size*6, fr) != NULL) {
-      if(DBG) printf("READLINE: %s\n", line);
       if(line[0] == '\0' || line[0] == '\n' || line[0] == '\r' || line[0] == '\t' || line[0] == ' ') {
          // Empty line separating the inputs (size/matrixA/matrixB)
          // IMPORTANT! This marks a state transition
