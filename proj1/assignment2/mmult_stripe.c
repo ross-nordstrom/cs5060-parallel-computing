@@ -22,7 +22,7 @@
 #define DOWN   1
 #define LEFT   2
 #define RIGHT  3
-#define DBG    0
+#define DBG    1
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -164,9 +164,9 @@ int main (int argc, char* argv[])
       } // for each neighbor
 
       // Synchronize to ensure all messages have been sent
-      if(DBG) printf("[%d] (%d,%d) Before compute post-send...\n",rank,i,j);
+      // if(DBG) printf("[%d] (%d,%d) Before compute post-send...\n",rank,i,j);
       MPI_Barrier(MPI_COMM_WORLD);
-      if(DBG) printf("[%d] (%d,%d) After compute post-send...\n",rank,i,j);
+      // if(DBG) printf("[%d] (%d,%d) After compute post-send...\n",rank,i,j);
       
       /**
        * Calculate this C element, receiving data as needed from neighbors
@@ -196,9 +196,9 @@ int main (int argc, char* argv[])
       } // for each neighbor
 
       // Synchronize on each cell
-      if(DBG) printf("[%d] (%d,%d) Before compute post-compute...\n",rank,i,j);
+      // if(DBG) printf("[%d] (%d,%d) Before compute post-compute...\n",rank,i,j);
       MPI_Barrier(MPI_COMM_WORLD);
-      if(DBG) printf("[%d] (%d,%d) After compute post-compute...\n",rank,i,j);
+      // if(DBG) printf("[%d] (%d,%d) After compute post-compute...\n",rank,i,j);
 
     } // for each of my rows
   } // for each of my columns
@@ -207,22 +207,24 @@ int main (int argc, char* argv[])
 
   if(rank == 0) {
     initMatrix(&matrixC, size);
-    for(k=0; k<(size/numtasks); k++){
+    for(k=0; k<myN; k++){
       matrixC[k] = myMatrixC[k];
     }
-    for(k=(size/numtasks); k<size; k++) {
-      // receive myMatrixC from process "k"
-      if(DBG) printf("Collect myMatrixC from process %d\n", k);
-      matrixC[k] = malloc(size*sizeof(int));
-      recvRank = k / numtasks;
-      MPI_Recv(matrixC[k], size, MPI_INT, recvRank, 2, MPI_COMM_WORLD, &status);
+    for(k=myN; k<size; k++) {
+      // receive myMatrixC from the appropriate process
+      matrixC[k] = (int *) malloc(size*sizeof(int));
+      recvRank = k / myN;
+      recvTag = k % myN;
+      if(DBG) printf("Collect myMatrixC from process %d\n", recvRank);
+      MPI_Recv(matrixC[k], size, MPI_INT, recvRank, recvTag, MPI_COMM_WORLD, &status);
       if(DBG) printf("Collected from %d\n", k);
     }
   } else {
     // send myMatrixC to root process
-    if(DBG) printf("[%d] Return myMatrixC to root\n", rank);
-    for(k=0; k<(size/numtasks); k++){
-      MPI_Send(myMatrixC[k], size, MPI_INT, 0, 2, MPI_COMM_WORLD);
+    for(k=0; k<myN; k++){
+      if(DBG) printf("[%d] Return myMatrixC[%d] to root\n", rank,k);
+      MPI_Send(myMatrixC[k], size, MPI_INT, 0, k, MPI_COMM_WORLD);
+      if(DBG) printf("[%d] Returned myMatrixC[%d] to root\n", rank,k);
     }
   }
 
