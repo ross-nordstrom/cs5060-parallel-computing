@@ -39,6 +39,7 @@ void my_rwlock_init(my_rwlock_t *l, int queueSize);
 void my_rwlock_rlock(my_rwlock_t *l);
 void my_rwlock_wlock(my_rwlock_t *l);
 void my_rwlock_unlock(my_rwlock_t *l);
+void my_rwlock_set_proceed(my_rwlock_t *l);
 int room_to_write(my_rwlock_t *l);
 int room_to_read(my_rwlock_t *l);
 void setProducerDone();
@@ -99,7 +100,7 @@ int main (int argc, char* argv[])
 
   // Create a thread per consumer
   for(i=1; i < (numConsumers+1); i++) {
-    if(rc = pthread_create(&threads[i], NULL, consumer, NULL))
+    if(rc = pthread_create(&threads[i], NULL, consumer, (void*)0))
       if(DBG) printf("Error creating consumer thread %d\n", i);
   } // create each consumer
 
@@ -116,13 +117,15 @@ int main (int argc, char* argv[])
   /**
   * Join producer and consumer threads
   */
-  for(i=0; i < (numConsumers+1); i++) {
+  for(i=1; i < 2; i++) {
     if(DBG) printf("MAIN - wait to join thread %d\n", i);
     pthread_join(threads[i], NULL);
     if(DBG) printf("MAIN - joined thread %d\n", i);
   } // join each thread
 
   if(DBG) printf("\nPROGRAM - END\n");
+  //pthread_exit(NULL);
+  return 0;
 }
 
 /******************************************************************************
@@ -166,10 +169,12 @@ void * producer(void *producer_thread_data) {
   } // each line in file
 
   setDone();
+  
   if(DBG) printf("[%ld] PRODUCER - END\n", pthread_self());
   usleep(sleepProd);
   if(DBG) printf("PRODUCER - Slept\n");
-  pthread_exit(NULL);
+  //pthread_exit(NULL);
+  return (void*) 0;
 }
 
 /******************************************************************************
@@ -216,7 +221,8 @@ void * consumer(void *consumer_thread_data) {
   }
 
   if(DBG) printf("[%ld] CONSUMER - END\n", pthread_self());
-  pthread_exit(NULL);
+  //pthread_exit(NULL);
+  return (void*) 0;
 }
 
 /******************************************************************************
@@ -227,6 +233,7 @@ void setDone() {
   done = 1;
   printf(" [DONE!]\n");
   pthread_mutex_unlock(&lockDone);
+  my_rwlock_set_proceed(&lockQueue);
 }
 
 int isDone() {
@@ -299,8 +306,15 @@ void my_rwlock_rlock(my_rwlock_t *l) {
     pthread_cond_wait(&(l->readers_proceed), &(l->read_write_lock));
     if(DBG) printf("[%ld] Got 'readers_proceed'\n",pthread_self());
     l->pending_readers--;
+    if(isDone() && l->queueCount == 0 ){
+      if(DBG) printf("[%ld] I've got better things to do than wait for nothing to happen.'\n",pthread_self());
+      //pthread_exit(NULL);
+      //return (void*) 0;
+    }
   }
   l->readers++;     // I'm also reading now
+  //proactivel decrementing the queueCount assuming the reader will remove
+  l->queueCount--; // I was a reader, so assume something was read
   if(DBG) printf("CUR READERS: %d\n", l->readers);
   pthread_mutex_unlock(&(l->read_write_lock));
 }
@@ -330,6 +344,8 @@ void my_rwlock_wlock(my_rwlock_t *l) {
     l->pending_writers--;
   }
   l->writer++;
+  //proactively increment queueCount assuming writer will add to queue
+  l->queueCount++; // I was a writer, so assume something was written
   pthread_mutex_unlock(&(l->read_write_lock));
 }
 
@@ -347,11 +363,9 @@ void my_rwlock_unlock(my_rwlock_t *l) {
    */
   pthread_mutex_lock(&(l->read_write_lock));
   if(l->writer > 0) {
-    l->queueCount++; // I was a writer, so assume something was written
     l->writer = 0;
     l->auditWrites++;
   } else if(l->readers > 0) {
-    l->queueCount--; // I was a reader, so assume something was read
     l->readers--;
     l->auditReads++;
   }
@@ -382,6 +396,10 @@ void my_rwlock_unlock(my_rwlock_t *l) {
     if(DBG) printf("UNLOCK... Signal readers_proceed\n");
     pthread_cond_signal(&(l->readers_proceed));
   }
+}
+
+void my_rwlock_set_proceed(my_rwlock_t *l) {
+  pthread_cond_broadcast(&(l->readers_proceed));
 }
 
 int room_to_write(my_rwlock_t *l) {
