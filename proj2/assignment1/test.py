@@ -37,6 +37,7 @@ out, err = p.communicate()
 print " "
 print "Test random inputs..."
 errorCnt = 0
+timesPerIter = 10
 inputSets = [[4,1,1],[4,1,2],[10,1,4],[10,2,1],[10,2,2],[20,4,2],[20,10,1],[100,10,4],[100,10,10],[100,25,5],[100,50,1],[100,25,5]]
 for strLen,qLen,consumers in inputSets:
 
@@ -47,7 +48,7 @@ for strLen,qLen,consumers in inputSets:
    fo.close()
 
    # Run with each data set 5 times
-   for _ in range(5):
+   for _ in range(timesPerIter):
       if Util.test(qLen,consumers,x):
          print "Tested with StrLen:{}, QueueSize:{}, Consumers:{}\t\033[91m{}\033[0m  [{}]".format(strLen, qLen, consumers, 'X', errorCnt)
          cmd = ["cp","string.txt","string"+str(errorCnt)+".err"]
@@ -65,9 +66,9 @@ cmd = ["mv","string.bak","string.txt"]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
 out, err = p.communicate()
 
-print "Ran against {} different input sets...".format(1+len(inputSets))
+print "Ran against {} different input sets, {} times each...".format(1+len(inputSets), str(timesPerIter))
 print "\n\n"
 if errorCnt == 0:
-   print u"Success!\t\t\t\033[92m{}\033[0m".format(proc, checkMark)
+   print u"Success!\t\t\t\033[92m{}\033[0m".format(checkMark)
 else:
    print  "AH! {} errors...\t\t\t\033[91m{}\033[0m".format(errorCnt, 'X')

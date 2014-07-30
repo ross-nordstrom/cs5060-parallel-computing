@@ -203,7 +203,6 @@ void * consumer(void *consumer_thread_data) {
     ch = '\n';
     ch = dequeue();
     if(DBG) printf("[%ld] CONSUMER - I > Release mutex\n", pthread_self());
-    pthread_mutex_unlock(&lockConsumeIdx);
 
     // Double check
     if(ch != '\n') {
@@ -214,6 +213,7 @@ void * consumer(void *consumer_thread_data) {
         printf("%c", ch);
       }
     }
+    pthread_mutex_unlock(&lockConsumeIdx);
 
     if(DBG) printf("[%ld] CONSUMER - Q > Release r/w lock\n", pthread_self());
     my_rwlock_unlock(&lockQueue);
