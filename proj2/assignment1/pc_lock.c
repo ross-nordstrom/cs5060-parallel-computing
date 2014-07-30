@@ -57,7 +57,7 @@ char *circQueue;
 int idxProduce=0;   // Point to the next destination
 int idxConsume=0;   // Point to the next destination
 int queueSize, numConsumers, done;
-int sleepProd = 1000*10, sleepCons = 2000*10;
+int sleepProd = 15;
 
 // Locks
 struct my_rwlock_t lockQueue;
@@ -95,9 +95,6 @@ int main (int argc, char* argv[])
   if(rc = pthread_create(&threads[0], NULL, producer, NULL))
     if(DBG) printf("Error creating producer thread\n");
 
-  // Sleep to ensure producer starts first
-  usleep(sleepProd);
-
   // Create a thread per consumer
   for(i=1; i < (numConsumers+1); i++) {
     if(rc = pthread_create(&threads[i], NULL, consumer, (void*)0))
@@ -117,7 +114,7 @@ int main (int argc, char* argv[])
   /**
   * Join producer and consumer threads
   */
-  for(i=1; i < 2; i++) {
+  for(i=numConsumers; i>0; i--) {
     if(DBG) printf("MAIN - wait to join thread %d\n", i);
     pthread_join(threads[i], NULL);
     if(DBG) printf("MAIN - joined thread %d\n", i);
@@ -164,14 +161,13 @@ void * producer(void *producer_thread_data) {
       if(DBG) printf("[%ld] PRODUCER - Q > Release r/w lock\n", pthread_self());
       my_rwlock_unlock(&lockQueue);
       if(DBG) printf("[%ld] PRODUCER - Q > Released r/w lock\n", pthread_self());
-      // usleep(sleepProd);
     } // each char in line
   } // each line in file
 
   setDone();
   
   if(DBG) printf("[%ld] PRODUCER - END\n", pthread_self());
-  usleep(sleepProd);
+  sleep(sleepProd);
   if(DBG) printf("PRODUCER - Slept\n");
   //pthread_exit(NULL);
   return (void*) 0;
@@ -200,8 +196,7 @@ void * consumer(void *consumer_thread_data) {
     pthread_mutex_lock(&lockConsumeIdx);
     if(DBG) printf("[%ld] CONSUMER - I > Have mutex\n", pthread_self());
     ch = '\n';
-    if(!isDone() || (idxConsume < idxProduce))
-      ch = dequeue();
+    ch = dequeue();
     if(DBG) printf("[%ld] CONSUMER - I > Release mutex\n", pthread_self());
     pthread_mutex_unlock(&lockConsumeIdx);
 
@@ -231,7 +226,7 @@ void * consumer(void *consumer_thread_data) {
 void setDone() {
   pthread_mutex_lock(&lockDone);
   done = 1;
-  printf(" [DONE!]\n");
+  if(DBG) printf("-----------------------------------[DONE!]-----------------------------------\n");
   pthread_mutex_unlock(&lockDone);
   my_rwlock_set_proceed(&lockQueue);
 }
@@ -240,6 +235,8 @@ int isDone() {
   int localDone;
   pthread_mutex_lock(&lockDone);
   localDone = done;
+  if(DBG && done)  printf("[%ld] Is done.\n", pthread_self());
+  if(DBG && !done) printf("[%ld] Not done.\n", pthread_self());
   pthread_mutex_unlock(&lockDone);
   return localDone;
 }
@@ -301,14 +298,26 @@ void my_rwlock_rlock(my_rwlock_t *l) {
       if(DBG) printf("[%ld] Signal 'writer_proceed'\n",pthread_self());
       pthread_cond_signal(&(l->writer_proceed));
     }
+    if(isDone() && l->queueCount <= 0) {
+      if(DBG) printf("[%ld] Broadcast 'readers_proceed'\n",pthread_self());
+      pthread_cond_broadcast(&(l->readers_proceed));
+      if(DBG) printf("[%ld] Nothing left to do. I'm exiting...\n", pthread_self());
+      printf("\n,\n");
+      pthread_mutex_unlock(&(l->read_write_lock));
+      pthread_exit(NULL);
+    }
     l->pending_readers++;
     if(DBG) printf("[%ld] Wait for 'readers_proceed'\n",pthread_self());
     pthread_cond_wait(&(l->readers_proceed), &(l->read_write_lock));
     if(DBG) printf("[%ld] Got 'readers_proceed'\n",pthread_self());
     l->pending_readers--;
     if(isDone() && l->queueCount == 0 ){
+      if(DBG) printf("[%ld] Broadcast 'readers_proceed'\n",pthread_self());
+      pthread_cond_broadcast(&(l->readers_proceed));
       if(DBG) printf("[%ld] I've got better things to do than wait for nothing to happen.'\n",pthread_self());
-      //pthread_exit(NULL);
+      printf("\n;\n");
+      pthread_mutex_unlock(&(l->read_write_lock));
+      pthread_exit(NULL);
       //return (void*) 0;
     }
   }
@@ -414,7 +423,7 @@ int room_to_write(my_rwlock_t *l) {
 }
 int room_to_read(my_rwlock_t *l) {
   if(DBG) printf("Room to read? (cnt=%d, cap=%d, readers=%d, pending_readers=%d)  ", l->queueCount, l->queueCapacity, l->readers, l->pending_readers);
-  if(l->queueCount >= (l->readers + l->pending_readers) && (l->readers + l->pending_readers) <= l->queueCount) {
+  if(l->queueCount >= (l->readers + 1)) {
     if(DBG) printf("Yes\n");
     return 1;
   } else {
