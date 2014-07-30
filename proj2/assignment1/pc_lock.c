@@ -134,7 +134,7 @@ void * producer(void *producer_thread_data) {
   int i, ttl;
   int maxStrSize = 1024*1024;  // Arbitrary max
   FILE *fr;
-  char *line;
+  char *line = malloc(maxStrSize * sizeof(char));
 
   /**
    * Working loop
@@ -144,6 +144,7 @@ void * producer(void *producer_thread_data) {
    */
   if(DBG) printf("[%ld] PRODUCER - START\n", pthread_self());
   fr = fopen("string.txt", "rt");
+  if(DBG) printf("[%ld] PRODUCER - File opened, begin reading\n",pthread_self());
   while(fgets(line, maxStrSize, fr) != NULL) {
     ttl = 10; // It will only loop in place TTL times
     if(DBG) printf("[%ld] PRODUCER - LINE = '%s'\n", pthread_self(), line);
@@ -163,6 +164,10 @@ void * producer(void *producer_thread_data) {
       if(DBG) printf("[%ld] PRODUCER - Q > Released r/w lock\n", pthread_self());
     } // each char in line
   } // each line in file
+
+  if(DBG) printf("[%ld] PRODUCER - Done reading\n",pthread_self());
+  fclose(fr);
+  if(DBG) printf("[%ld] PRODUCER - File closed.\n",pthread_self());
 
   setDone();
   
@@ -198,7 +203,6 @@ void * consumer(void *consumer_thread_data) {
     ch = '\n';
     ch = dequeue();
     if(DBG) printf("[%ld] CONSUMER - I > Release mutex\n", pthread_self());
-    pthread_mutex_unlock(&lockConsumeIdx);
 
     // Double check
     if(ch != '\n') {
@@ -209,6 +213,7 @@ void * consumer(void *consumer_thread_data) {
         printf("%c", ch);
       }
     }
+    pthread_mutex_unlock(&lockConsumeIdx);
 
     if(DBG) printf("[%ld] CONSUMER - Q > Release r/w lock\n", pthread_self());
     my_rwlock_unlock(&lockQueue);
