@@ -1,5 +1,3 @@
-#include <omp.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -71,28 +69,22 @@ void procedureLU(double **A, int n){
   int i, j, k;
   if(DBG) printf("Procedure Started\n");
 
-  #pragma omp parallel private(k, i, j)
-  {
-    //#pragma omp for
-    for(k=0;k<n;k++){
-      #pragma omp for
-      for(j=(k+1);j<n;j++){
-        if(DBG) printf("In the j loop:A[%d][%d](%lf) with:%d from A[%d][%d](%lf) / A[%d][%d](%lf)\n", k, j, A[k][j] / A[k][k], omp_get_thread_num(), k, j, A[k][j], k, k, A[k][k]);
-        A[k][j] = A[k][j] / A[k][k];
-      }
-      #pragma omp for
-      for(i=(k+1);i<n;i++){
-        for(j=(k+1);j<n;j++){
-          if(DBG) printf("In the i loop:A[%d][%d](%lf) with:%d from A[%d][%d](%lf) - A[%d][%d](%lf) * A[%d][%d](%lf)\n", i, j, A[i][j] - (A[i][k] * A[k][j]), omp_get_thread_num(), i, j, A[i][j], i, k, A[i][k], k, j, A[k][j]);
-          A[i][j] = A[i][j] - (A[i][k] * A[k][j]);
-        }  
+  for(i=0;i<(n);i++){
+    for(j=(i+1);j<(n);j++){
+      A[i][j] = A[i][j] / A[i][i];
+      if(DBG) printf("in the j loop:A[%d][%d]\n", i, j);
+    }
+    for(j=(i+1);j<(n);j++){
+      for(k=(i+1);k<(n);k++){
+        A[j][k] = A[j][k] - (A[j][i]*A[i][k]);
+        if(DBG) printf("in the i loop:A[%d][%d]\n", j, k);
       }
     }
   }
 
   if(DBG) printf("Procedure Completed\n");
 
-  printf("Parallel Algorithm\n");
+  printf("Serial Algorithm\n");
 
   for(i=0;i<n;i++){
     for(j=0;j<n;j++){
@@ -100,6 +92,7 @@ void procedureLU(double **A, int n){
     }
     printf("\n");
   }
+  printf("\n");
 }
 
 int main(int argc, char *argv[]){
