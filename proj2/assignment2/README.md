@@ -21,7 +21,7 @@ sections	and	critical).
 Tests the program with a variety of inputs
 
 ```bash
-pythong test.py
+python test.py
 ```
 
 ![Test suite screenshot 1](./screenshot1.png)
