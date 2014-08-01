@@ -147,18 +147,42 @@ int main (int argc, char* argv[])
   workingB = (int *) malloc(sizeof(int) * myN);
   myBColumn = (int *) malloc(sizeof(int) * myN);
 
-  index1 = rank / rtP; // Get the row this processor is in
-  index2 = rank % rtP; // Get the column this processor is in
   for(i=0; i<myN; i++) {
     // Initliaze this row of each of my matrices
     myMatrixA[i] = (int *) malloc(sizeof(int) * myN);
     myMatrixB[i] = (int *) malloc(sizeof(int) * myN);
     myMatrixC[i] = (int *) malloc(sizeof(int) * myN);
 
-    for(j=0; j<myN; j++) {
+    if(rank==0){
+      //use myMatrixA/B as temp
+      for(j=1; j<numtasks; j++){ 
+        index1 = j / rtP; // Get the row this processor is in
+        index2 = j % rtP; // Get the column this processor is in
+
+        for(k=0; k<myN; k++) {
+          myMatrixA[i][k] = matrixA[index1*myN+i][index2*myN+j];
+          myMatrixB[i][k] = matrixB[index1*myN+i][index2*myN+j];
+        }
+
+        MPI_Isend(myMatrixA[i], myN, MPI_INT, j, i, MPI_COMM_WORLD, &request);
+        MPI_Isend(myMatrixB[i], myN, MPI_INT, j, i, MPI_COMM_WORLD, &request);
+      }
+
+      index1 = rank / rtP;
+      index2 = rank % rtP;
+      
+      for(j=0; j<myN; j++) {
+        myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
+        myMatrixB[i][j] = matrixB[index1*myN+i][index2*myN+j];
+      }
+    }else{
+      MPI_Recv(myMatrixA[i], myN, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+      MPI_Recv(myMatrixB[i], myN, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+    }
+    /*for(j=0; j<myN; j++) {
       myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
       myMatrixB[i][j] = matrixB[index1*myN+i][index2*myN+j];
-    } // iterate over each column
+    } */ // iterate over each column
   } // iterate over each row
 
   // TODO: Clear matrixA and matrixB from mem
