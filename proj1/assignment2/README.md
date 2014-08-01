@@ -1,14 +1,21 @@
-# Build
+# Usage
+
+## Build
 ```
 ./build.sh
 ```
 
-# Run
+## Run
 ```
 ./run.sh
 ```
 
-# Test
+## Test
 ```
 python test.py
 ```
+
+# Implementation
+## Striped Partitioning
+
+## Blocked Partitioning
