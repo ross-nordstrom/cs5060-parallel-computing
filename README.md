@@ -13,3 +13,4 @@ Please see the README for the respective assignments within the projects:
 ## Project 2
  * [Assignment 1](proj2/assignment1/README.md)
  * [Assignment 2](proj2/assignment2/README.md)
+ * [Assignment 3](proj2/assignment3/README.md)
