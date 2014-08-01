@@ -23,7 +23,8 @@ Run our python script to test out the program with a variety of string sizes, qu
 python test.py
 ```
 
-
+![Test script screenshot1](./screenshot1.png)
+![Test script screenshot2](./screenshot2.png)
 
 # Implementation
 
