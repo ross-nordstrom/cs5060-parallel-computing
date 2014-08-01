@@ -25,4 +25,4 @@ pythong test.py
 ```
 
 ![Test suite screenshot 1](./screenshot1.png)
-![Test suite screenshot 1](./screenshot1.png)
+![Test suite screenshot 2](./screenshot2.png)
