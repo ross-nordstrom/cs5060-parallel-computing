@@ -23,6 +23,7 @@
 #define LEFT   2
 #define RIGHT  3
 #define DBG    0
+#define DBG2    1
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -160,8 +161,8 @@ int main (int argc, char* argv[])
         index2 = j % rtP; // Get the column this processor is in
 
         for(k=0; k<myN; k++) {
-          myMatrixA[i][k] = matrixA[index1*myN+i][index2*myN+j];
-          myMatrixB[i][k] = matrixB[index1*myN+i][index2*myN+j];
+          myMatrixA[i][k] = matrixA[index1*myN+i][index2*myN+k];
+          myMatrixB[i][k] = matrixB[index1*myN+i][index2*myN+k];
         }
 
         MPI_Isend(myMatrixA[i], myN, MPI_INT, j, i, MPI_COMM_WORLD, &request);
@@ -187,7 +188,7 @@ int main (int argc, char* argv[])
 
   // TODO: Clear matrixA and matrixB from mem
   MPI_Barrier(MPI_COMM_WORLD);
-  if(DBG) {
+  if(DBG2) {
     // Verify correct assignment
     for(i=0; i<numtasks; i++) {
       if(rank==i) {
