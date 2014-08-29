@@ -112,20 +112,21 @@ for proc,n in inputSets:
       fo.write( " ".join(map(str,row)) +"\n" )
    fo.close()
 
-   for scheme in ['block']: #['stripe','block']:
-      script = "./mmult_"+scheme+".o"
-      if Util.testmmult(proc,c,script):
-         print "Tested with P:{}, N: {}\t\033[91m{}\033[0m  [{}]\t{}".format(proc, n, 'X', errorCnt, scheme)
-         cmd = ["cp","data.txt","data"+str(errorCnt)+".err"]
-         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-         out, err = p.communicate()
-         errf = open( 'data'+str(errorCnt)+'.exp', 'w' )
-         errf.write(str(c)+"\n")
-         errf.close()
-         errorCnt += 1
-      else:
-         checkMark = u'\u2713'
-         print u"Tested with P:{}, N: {}\t\033[92m{}\033[0m     \t{}".format(proc, n, checkMark, scheme)
+   for scheme in ['stripe','block']:
+      if( (scheme=='stripe' and n%proc==0) or (scheme=='block' and n%int(math.sqrt(proc))==0)):
+         script = "./mmult_"+scheme+".o"
+         if Util.testmmult(proc,c,script):
+            print "Tested with P:{}, N: {}\t\033[91m{}\033[0m  [{}]\t{}".format(proc, n, 'X', errorCnt, scheme)
+            cmd = ["cp","data.txt","data"+str(errorCnt)+".err"]
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+            out, err = p.communicate()
+            errf = open( 'data'+str(errorCnt)+'.exp', 'w' )
+            errf.write(str(c)+"\n")
+            errf.close()
+            errorCnt += 1
+         else:
+            checkMark = u'\u2713'
+            print u"Tested with P:{}, N: {}\t\033[92m{}\033[0m     \t{}".format(proc, n, checkMark, scheme)
 
 
 

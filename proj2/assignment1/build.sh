@@ -1,0 +1,1 @@
+gcc pc_lock.c -lpthread -o pc_lock.o

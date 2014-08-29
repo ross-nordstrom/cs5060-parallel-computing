@@ -23,6 +23,7 @@
 #define LEFT   2
 #define RIGHT  3
 #define DBG    0
+#define DBG2    1
 
 int readInputFile(int ***matrixAPtr, int ***matrixBPtr);
 void initMatrix(int ***matrixPtr, int size);
@@ -115,7 +116,7 @@ int main (int argc, char* argv[])
     if(DBG) printf("[%d] (%d) U/D --  i1: %d, i2: %d\n", rank, i, index1, index2);
 
     MPI_Cart_shift(cartcomm, 0, i, &nbr1, &nbr2);
-    
+
     if(DBG) printf("[%d] (%d) U/D --  n1: %d, n2: %d\n", rank, i, nbr1, nbr2);
     if(index1 >= 0 && index1 < rtP) nbrsB[index1] = nbr1;
     if(index2 >= 0 && index1 < rtP) nbrsB[index2] = nbr2;
@@ -123,7 +124,7 @@ int main (int argc, char* argv[])
     index1 = coords[1] - i;
     index2 = coords[1] + i;
     if(DBG) printf("[%d] (%d) L/R --  i1: %d, i2: %d\n", rank, i, index1, index2);
-    
+
     MPI_Cart_shift(cartcomm, 1, i,  &nbr1, &nbr2);
 
     if(DBG) printf("[%d] (%d) L/R --  n1: %d, n2: %d\n", rank, i, nbr1, nbr2);
@@ -147,23 +148,47 @@ int main (int argc, char* argv[])
   workingB = (int *) malloc(sizeof(int) * myN);
   myBColumn = (int *) malloc(sizeof(int) * myN);
 
-  index1 = rank / rtP; // Get the row this processor is in
-  index2 = rank % rtP; // Get the column this processor is in
   for(i=0; i<myN; i++) {
     // Initliaze this row of each of my matrices
     myMatrixA[i] = (int *) malloc(sizeof(int) * myN);
     myMatrixB[i] = (int *) malloc(sizeof(int) * myN);
     myMatrixC[i] = (int *) malloc(sizeof(int) * myN);
 
-    for(j=0; j<myN; j++) {
+    if(rank==0){
+      //use myMatrixA/B as temp
+      for(j=1; j<numtasks; j++){ 
+        index1 = j / rtP; // Get the row this processor is in
+        index2 = j % rtP; // Get the column this processor is in
+
+        for(k=0; k<myN; k++) {
+          myMatrixA[i][k] = matrixA[index1*myN+i][index2*myN+k];
+          myMatrixB[i][k] = matrixB[index1*myN+i][index2*myN+k];
+        }
+
+        MPI_Isend(myMatrixA[i], myN, MPI_INT, j, i, MPI_COMM_WORLD, &request);
+        MPI_Isend(myMatrixB[i], myN, MPI_INT, j, i, MPI_COMM_WORLD, &request);
+      }
+
+      index1 = rank / rtP;
+      index2 = rank % rtP;
+      
+      for(j=0; j<myN; j++) {
+        myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
+        myMatrixB[i][j] = matrixB[index1*myN+i][index2*myN+j];
+      }
+    }else{
+      MPI_Recv(myMatrixA[i], myN, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+      MPI_Recv(myMatrixB[i], myN, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
+    }
+    /*for(j=0; j<myN; j++) {
       myMatrixA[i][j] = matrixA[index1*myN+i][index2*myN+j];
       myMatrixB[i][j] = matrixB[index1*myN+i][index2*myN+j];
-    } // iterate over each column
+    } */ // iterate over each column
   } // iterate over each row
 
   // TODO: Clear matrixA and matrixB from mem
-  MPI_Barrier(MPI_COMM_WORLD); 
-  if(DBG) {
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(DBG2) {
     // Verify correct assignment
     for(i=0; i<numtasks; i++) {
       if(rank==i) {
@@ -328,12 +353,13 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
     */
    int state = 0, i, j, size = 0, tmp;
    int **matrixA, **matrixB, **matrixC;
+   int maxStrSize = 120;
    FILE *fr;
-   char *line;
+   char *line = malloc(maxStrSize*sizeof(char));
    char *tok;
 
    fr = fopen("data.txt", "rt");
-   while(fgets(line, 120, fr) != NULL) {
+   while(fgets(line, maxStrSize, fr) != NULL) {
       if(line[0] == '\0' || line[0] == '\n' || line[0] == '\r' || line[0] == '\t' || line[0] == ' ') {
          // Empty line separating the inputs (size/matrixA/matrixB)
          // IMPORTANT! This marks a state transition
@@ -344,7 +370,8 @@ int readInputFile(int ***matrixAPtr, int ***matrixBPtr) {
          size = atoi(line);
 
          // Initialize the line string, assuming worst case 6-char per specified matrix cell
-         line = malloc(size*6*sizeof(char));
+         maxStrSize = size*6;
+         line = malloc(maxStrSize*sizeof(char));
 
          // Initialize the matrices
          initMatrix(&matrixA, size);
